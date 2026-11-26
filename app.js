@@ -26,6 +26,8 @@ function defaultTimetable() {
     // 学期ごとの時間割。キーは "2026-spring" / "2026-fall"
     // classes のキーは "曜日-時限" (例: "1-2" = 月曜2限)
     terms: {},
+    // 出席のルール(授業ごとに sessions / lateCount で上書きできる)
+    rules: { sessions: 15, failRatio: 1 / 3, lateCount: 1 },
     currentTerm: null, // 表示中の学期
     autoTerm: null,    // 最後に自動で合わせた学期(学期が変わったら自動で切り替えるため)
   };
@@ -56,6 +58,8 @@ function termFromOrder(n) {
 
 function ensureTerm(tt, id) {
   if (!tt.terms[id]) tt.terms[id] = { classes: {} };
+  // 出席の記録: attendance["曜日-時限"] = [{ date: "2026-11-26", status: "present" | "late" | "absent" }]
+  if (!tt.terms[id].attendance) tt.terms[id].attendance = {};
   return tt.terms[id];
 }
 
@@ -106,6 +110,7 @@ function migrate(s) {
     if (s.timetable.classes) s.timetable.terms[termIdFor()] = { classes: s.timetable.classes };
   }
   delete s.timetable.classes;
+  if (!s.timetable.rules) s.timetable.rules = { sessions: 15, failRatio: 1 / 3, lateCount: 1 };
   // バージョンが上がったらここで変換処理を追加する
   s.version = SCHEMA_VERSION;
   syncTerm(s);
@@ -540,15 +545,17 @@ function nowInfo(date = new Date()) {
   const day = date.getDay();
   const min = date.getHours() * 60 + date.getMinutes();
   let current = null;
+  let last = null;
   const upcoming = [];
   if (tt.days.includes(day)) {
     tt.periods.forEach((p, i) => {
       const c = todays[classKey(day, i + 1)];
       if (min >= toMin(p.start) && min < toMin(p.end)) current = { period: i + 1, p, c };
       else if (min < toMin(p.start) && c) upcoming.push({ period: i + 1, p, c });
+      else if (min >= toMin(p.end) && c) last = { period: i + 1, p, c };
     });
   }
-  return { day, current, next: upcoming[0] || null };
+  return { day, current, last, next: upcoming[0] || null };
 }
 
 function renderTermSelect() {
@@ -601,10 +608,21 @@ function renderTimetable() {
       next.c.room ? el('span', { class: 'muted' }, `(${next.c.room})`) : null,
       el('span', { class: 'muted' }, ` ${next.p.start}〜`)));
   }
-  if (!lines.length) {
+  // 今の授業(なければ今日さっき終わった授業)の出席をここで記録できる
+  const attTarget = info.current && info.current.c ? info.current : info.last;
+  if (attTarget) {
+    const todayTerm = termIdFor(now);
+    const key = classKey(info.day, attTarget.period);
+    const sum = attSummary(todayTerm, key, attTarget.c);
+    lines.push(el('div', { class: 'now-att' },
+      el('span', { class: 'small' }, attTarget === info.current ? '出席を記録:' : `${attTarget.period}限 ${attTarget.c.name} の出席:`),
+      attButtons(todayTerm, key, dateStr(now), () => renderTimetable()),
+      el('span', { class: `small att-mini ${sum.level}` }, attText(sum))));
+  }
+  if (!(info.current && info.current.c) && !next) {
     const todays = (tt.terms[termIdFor(now)] || { classes: {} }).classes;
     const any = tt.days.includes(info.day) && tt.periods.some((_, i) => todays[classKey(info.day, i + 1)]);
-    lines.push(el('div', { class: 'muted' }, any ? '今日の授業はもうありません' : '今日の授業はありません'));
+    lines.unshift(el('div', { class: 'muted' }, any ? '今日の授業はもうありません' : '今日の授業はありません'));
   }
   $('#tt-now').replaceChildren(...lines);
 
@@ -630,6 +648,11 @@ function renderTimetable() {
           ? c.courses.map((x) => el('span', { class: 'tt-name' }, x.name))
           : [el('span', { class: 'tt-name' }, c.name)]) : []),
         c && c.room ? el('span', { class: 'tt-room' }, c.room) : null,
+        (() => {
+          if (!c) return null;
+          const a = attSummary(tt.currentTerm, classKey(d, period), c);
+          return a.equiv ? el('span', { class: `tt-att ${a.level}` }, `欠${a.equiv}/${a.allowed}`) : null;
+        })(),
         n ? el('span', { class: 'tt-badge' }, `課題${n}`) : null,
       ));
     }
@@ -662,7 +685,11 @@ function openClass(day, period) {
   const f = $('#form-class');
   f.reset();
   $('#class-slot').textContent = `${WD[day]}曜 ${period}限(${p.start}〜${p.end})`;
+  if ($('#att-date')) $('#att-date').value = '';
+  renderClassAtt();
   if (c) {
+    f.sessions.value = c.sessions || '';
+    f.lateCount.value = c.lateCount || '';
     f.name.value = c.name || '';
     f.room.value = c.room || '';
     f.teacher.value = c.teacher || '';
@@ -708,6 +735,8 @@ $('#form-class').addEventListener('submit', (ev) => {
     teacher: f.teacher.value.trim(),
     credits: Number.isFinite(credits) ? credits : null,
     course: f.course.value.trim(),
+    sessions: Number(f.sessions.value) > 0 ? Math.floor(Number(f.sessions.value)) : null,
+    lateCount: Number(f.lateCount.value) > 0 ? Math.floor(Number(f.lateCount.value)) : null,
   };
   saveState();
   renderTimetable();
@@ -733,6 +762,161 @@ const MANABA_COURSE_URL = 'https://bunkyo-u.manaba.jp/ct/home_course?chglistform
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function manabaUrl(url) { return isIOS ? 'x-safari-' + url : url; }
+
+/* ---------- 出席 ---------- */
+
+const ATT_LABEL = { present: '出席', late: '遅刻', absent: '欠席' };
+
+function dateStr(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// その曜日の直近の日付(今日がその曜日なら今日)
+function recentDateFor(day, now = new Date()) {
+  const d = new Date(now);
+  d.setDate(d.getDate() - ((d.getDay() - day + 7) % 7));
+  return dateStr(d);
+}
+
+function attList(termId, key) {
+  const term = ensureTerm(state.timetable, termId);
+  return term.attendance[key] || [];
+}
+
+function setAttendance(termId, key, date, status) {
+  const term = ensureTerm(state.timetable, termId);
+  const list = (term.attendance[key] || []).filter((r) => r.date !== date);
+  if (status) list.push({ date, status });
+  list.sort((a, b) => a.date.localeCompare(b.date));
+  if (list.length) term.attendance[key] = list; else delete term.attendance[key];
+  saveState();
+}
+
+// 欠席の数え方: 欠席 + 遅刻(lateCount回で1回)。授業回数の failRatio 以上で単位NG
+function attSummary(termId, key, c) {
+  const rules = state.timetable.rules;
+  const list = attList(termId, key);
+  const n = { present: 0, late: 0, absent: 0 };
+  for (const r of list) if (n[r.status] != null) n[r.status]++;
+  const sessions = (c && c.sessions) || rules.sessions;
+  const lateCount = (c && c.lateCount) || rules.lateCount;
+  const equiv = n.absent + Math.floor(n.late / lateCount);
+  const failAt = Math.ceil(sessions * rules.failRatio - 1e-9); // 15回なら5回で不可
+  const allowed = failAt - 1;
+  const remain = allowed - equiv;
+  const level = remain < 0 ? 'over' : remain <= 1 ? 'danger' : remain <= 2 ? 'warn' : '';
+  return { ...n, total: list.length, equiv, allowed, remain, level, sessions, lateCount };
+}
+
+function attText(sum) {
+  if (sum.remain < 0) return `欠席 ${sum.equiv}回(上限${sum.allowed}回をこえています)`;
+  if (sum.remain === 0) return `欠席 ${sum.equiv}/${sum.allowed}回 ・ これ以上休めません`;
+  return `欠席 ${sum.equiv}/${sum.allowed}回 ・ あと${sum.remain}回休めます`;
+}
+
+function attButtons(termId, key, date, onDone) {
+  const cur = attList(termId, key).find((r) => r.date === date);
+  return el('div', { class: 'att-buttons' },
+    ...['present', 'late', 'absent'].map((st) => el('button', {
+      type: 'button',
+      class: `att-btn ${st} ${cur && cur.status === st ? 'on' : ''}`,
+      onclick: () => {
+        // 同じボタンをもう一度押すと取り消し
+        setAttendance(termId, key, date, cur && cur.status === st ? null : st);
+        onDone();
+      },
+    }, ATT_LABEL[st])));
+}
+
+function renderClassAtt() {
+  const box = $('#class-att');
+  const { day, period } = editingSlot;
+  const key = classKey(day, period);
+  const termId = state.timetable.currentTerm;
+  const c = ttClasses()[key];
+  if (!c) { box.replaceChildren(); return; }
+  const dateInput = $('#att-date') || el('input', { type: 'date', id: 'att-date', class: 'att-date' });
+  if (!dateInput.value) dateInput.value = recentDateFor(day);
+  dateInput.onchange = renderClassAtt;
+  const sum = attSummary(termId, key, c);
+  const list = attList(termId, key).slice().reverse();
+  box.replaceChildren(
+    el('div', { class: `att-head ${sum.level}` }, el('b', {}, '出席'), ' ', attText(sum)),
+    el('div', { class: 'small muted' }, `出席${sum.present} ・ 遅刻${sum.late} ・ 欠席${sum.absent}(全${sum.sessions}回 / 遅刻${sum.lateCount}回で欠席1回)`),
+    el('div', { class: 'att-row' }, dateInput, attButtons(termId, key, dateInput.value, () => { renderClassAtt(); renderTimetable(); })),
+    list.length ? el('div', { class: 'att-history' }, ...list.map((r) => el('span', { class: `att-chip ${r.status}` },
+      `${Number(r.date.slice(5, 7))}/${Number(r.date.slice(8, 10))} ${ATT_LABEL[r.status]}`,
+      el('button', {
+        type: 'button', class: 'att-del', 'aria-label': '記録を消す',
+        onclick: () => { setAttendance(termId, key, r.date, null); renderClassAtt(); renderTimetable(); },
+      }, '×')))) : null,
+  );
+}
+
+/* ---------- バックアップ ---------- */
+
+async function exportBackup() {
+  const d = new Date();
+  const name = `manaba-backup-${dateStr(d)}.json`;
+  const body = JSON.stringify({ app: 'manaba-pwa-backup', v: 1, exportedAt: d.toISOString(), data: state }, null, 1);
+  const file = new File([body], name, { type: 'application/json' });
+  let done = false;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'manaba課題 バックアップ' });
+      done = true;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  if (!done) {
+    const url = URL.createObjectURL(file);
+    const a = el('a', { href: url, download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+  state.lastBackupAt = Date.now();
+  saveState();
+  renderBackupInfo();
+}
+
+async function importBackup(file) {
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    toast('バックアップのファイルとして読み取れませんでした');
+    return;
+  }
+  if (!data || data.app !== 'manaba-pwa-backup' || !data.data) {
+    toast('このアプリのバックアップではないようです');
+    return;
+  }
+  const when = data.exportedAt ? fmtDue(new Date(data.exportedAt).getTime()) : '不明';
+  if (!confirm(`${when} のバックアップで、今のデータを置き換えます。よろしいですか?`)) return;
+  state = migrate(data.data);
+  saveState();
+  renderAll();
+  $('#dlg-backup').close();
+  toast('バックアップから元に戻しました');
+}
+
+function renderBackupInfo() {
+  $('#backup-info').textContent = state.lastBackupAt
+    ? `最後に書き出した日: ${fmtDue(state.lastBackupAt)}`
+    : 'まだ書き出したことはありません。';
+}
+
+$('#btn-backup').addEventListener('click', () => { renderBackupInfo(); $('#dlg-backup').showModal(); });
+$('#btn-export').addEventListener('click', exportBackup);
+$('#file-import').addEventListener('change', (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (f) importBackup(f);
+});
 
 /* ---------- 画面の切り替え ---------- */
 

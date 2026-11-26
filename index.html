@@ -43,6 +43,7 @@
     </details>
 
     <section class="tools">
+      <button id="btn-backup" class="btn">データのバックアップ</button>
       <button id="btn-add" class="btn">＋ 手動で追加</button>
       <a class="btn link" href="bookmarklet.html">ブックマークレットの設定</a>
     </section>
@@ -114,6 +115,7 @@
   <dialog id="dlg-class">
     <form method="dialog" class="dlg" id="form-class">
       <h2 id="class-slot"></h2>
+      <div id="class-att" class="class-att"></div>
       <div id="class-tasks" class="class-tasks"></div>
       <label>授業名<input name="name" required></label>
       <label>教室(任意)<input name="room"></label>
@@ -123,11 +125,33 @@
         <input name="course" list="course-list" placeholder="課題と結びつけるときに使います">
       </label>
       <datalist id="course-list"></datalist>
+      <details class="rules">
+        <summary class="small">出席のルール(この授業だけ変えるとき)</summary>
+        <label>授業の回数<input name="sessions" type="number" min="1" step="1" inputmode="numeric" placeholder="15"></label>
+        <label>遅刻何回で欠席1回<input name="lateCount" type="number" min="1" step="1" inputmode="numeric" placeholder="1"></label>
+        <p class="small muted">欠席が授業回数の3分の1以上になると単位がもらえない、として計算します。</p>
+      </details>
       <div class="dlg-actions">
         <button type="button" id="btn-class-clear" class="btn danger">このコマを空にする</button>
         <span class="spacer"></span>
         <button value="cancel" class="btn" formnovalidate>キャンセル</button>
         <button type="submit" value="ok" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- バックアップ -->
+  <dialog id="dlg-backup">
+    <form method="dialog" class="dlg">
+      <h2>データのバックアップ</h2>
+      <p class="small muted">課題・時間割・出席の記録を1つのファイルに保存します。機種変更のときや、データが消えてしまったときに、このファイルから元に戻せます。「ファイル」アプリやiCloud Driveに保存しておくのがおすすめです。</p>
+      <button type="button" id="btn-export" class="btn primary wide">ファイルに書き出す</button>
+      <label class="btn wide file-btn">ファイルから読み込む(元に戻す)
+        <input type="file" id="file-import" accept=".json,application/json" hidden>
+      </label>
+      <p id="backup-info" class="small muted"></p>
+      <div class="dlg-actions">
+        <button value="cancel" class="btn">閉じる</button>
       </div>
     </form>
   </dialog>

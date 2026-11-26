@@ -232,3 +232,34 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
   width: 100%; font: inherit; font-size: 16px; font-weight: 600; padding: 8px 12px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--card); color: var(--text);
 }
+
+/* ---------- 出席 ---------- */
+.class-att:empty { display: none; }
+.class-att { display: grid; gap: 6px; background: var(--bg); border-radius: 8px; padding: 10px; }
+.att-head { font-size: 14px; }
+.att-head.warn, .att-mini.warn { color: var(--warn); }
+.att-head.danger, .att-head.over, .att-mini.danger, .att-mini.over { color: var(--urgent-text); font-weight: 700; }
+.att-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.att-date { font: inherit; font-size: 15px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+.att-buttons { display: flex; gap: 6px; }
+.att-btn {
+  appearance: none; font: inherit; font-size: 14px; font-weight: 600; padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer;
+}
+.att-btn.present.on { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+.att-btn.late.on { background: var(--soon-bar); border-color: var(--soon-bar); color: #fff; }
+.att-btn.absent.on { background: var(--urgent-bar); border-color: var(--urgent-bar); color: #fff; }
+.att-history { display: flex; flex-wrap: wrap; gap: 4px; }
+.att-chip { font-size: 12px; border-radius: 6px; padding: 1px 2px 1px 6px; border: 1px solid var(--border); background: var(--card); }
+.att-chip.late { border-color: var(--soon-bar); }
+.att-chip.absent { border-color: var(--urgent-bar); color: var(--urgent-text); }
+.att-del { appearance: none; border: none; background: none; color: var(--muted); font-size: 13px; padding: 0 4px; cursor: pointer; }
+.now-att { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.att-mini { color: var(--muted); }
+.tt-att { font-size: 9px; font-weight: 700; color: var(--muted); }
+.tt-att.warn { color: var(--warn); }
+.tt-att.danger, .tt-att.over { color: var(--urgent-text); }
+.rules summary { cursor: pointer; color: var(--muted); }
+.rules { display: grid; gap: 8px; }
+.rules[open] { gap: 8px; }
+.file-btn { cursor: pointer; }
