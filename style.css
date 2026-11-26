@@ -131,3 +131,76 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
   background: #222; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 100;
   max-width: calc(100vw - 32px);
 }
+
+/* ---------- タブバー ---------- */
+body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; background: var(--card); border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1; appearance: none; border: none; background: none; color: var(--muted);
+  font: inherit; font-size: 11px; padding: 6px 0 8px; display: flex; flex-direction: column;
+  align-items: center; gap: 1px; position: relative; cursor: pointer;
+}
+.tab-icon { font-size: 20px; line-height: 1.2; }
+.tab.active { color: var(--primary); font-weight: 600; }
+.tab-badge {
+  position: absolute; top: 4px; left: calc(50% + 8px); background: var(--urgent-bar); color: #fff;
+  font-size: 11px; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px; padding: 0 5px;
+}
+.toast { bottom: calc(env(safe-area-inset-bottom) + 76px); }
+
+/* ---------- 時間割 ---------- */
+#view-timetable { padding-left: 8px; padding-right: 8px; }
+.tt-now {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 10px 12px; margin: 0 4px 10px; font-size: 14px; display: grid; gap: 2px;
+}
+.tt-grid { display: grid; gap: 3px; }
+.tt-corner { }
+.tt-head {
+  text-align: center; font-size: 13px; font-weight: 600; color: var(--muted); padding: 4px 0; border-radius: 8px;
+}
+.tt-head.today { background: var(--primary); color: #fff; }
+.tt-period {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 9px; color: var(--muted); line-height: 1.25; border-radius: 8px;
+}
+.tt-period b { font-size: 14px; color: var(--text); }
+.tt-period.now { background: var(--soon-bg); }
+.tt-cell {
+  appearance: none; font: inherit; color: var(--text); cursor: pointer;
+  min-height: 74px; padding: 4px 3px; border-radius: 8px;
+  border: 1px dashed var(--border); background: transparent;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px;
+  text-align: center; overflow: hidden;
+}
+.tt-cell.today { background: color-mix(in srgb, var(--primary) 6%, transparent); }
+.tt-cell.filled { border: 1px solid var(--border); background: var(--card); }
+.tt-cell.filled.today { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.tt-cell.now { outline: 2px solid var(--primary); outline-offset: -1px; }
+.tt-name {
+  font-size: 11px; font-weight: 600; line-height: 1.25; word-break: break-all;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tt-room { font-size: 10px; color: var(--muted); line-height: 1.2; word-break: break-all; }
+.tt-badge {
+  margin-top: auto; font-size: 9px; font-weight: 700; color: #fff; background: var(--urgent-bar);
+  border-radius: 6px; padding: 0 4px;
+}
+#tt-credits { margin: 12px 4px 0; }
+#view-timetable > p.muted { margin-left: 4px; margin-right: 4px; }
+
+.class-tasks:empty { display: none; }
+.class-tasks { display: grid; gap: 6px; background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.class-task { font-size: 14px; border-left: 4px solid var(--border); padding-left: 8px; }
+.class-task.urgent { border-left-color: var(--urgent-bar); }
+.class-task.soon { border-left-color: var(--soon-bar); }
+.class-task a { color: var(--primary); text-decoration: none; font-weight: 600; }
+.btn.danger { color: var(--urgent-text); }
+.dlg-actions .spacer { flex: 1; }
+.dlg-actions { flex-wrap: wrap; }
+
+[hidden] { display: none !important; }

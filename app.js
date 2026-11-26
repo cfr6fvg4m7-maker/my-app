@@ -6,15 +6,31 @@
  * ============================================================ */
 
 const STORAGE_KEY = 'manabaPwa';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
 /* ---------- 保存・読み込み ---------- */
 
+// 文教大学の時限(あとで設定画面から変えられるよう state に持たせる)
+function defaultTimetable() {
+  return {
+    days: [1, 2, 3, 4, 5, 6], // 月〜土 (Date#getDay と同じ番号)
+    periods: [
+      { start: '09:10', end: '10:40' },
+      { start: '10:50', end: '12:20' },
+      { start: '13:10', end: '14:40' },
+      { start: '14:50', end: '16:20' },
+      { start: '16:30', end: '18:00' },
+    ],
+    // キーは "曜日-時限" (例: "1-2" = 月曜2限)
+    classes: {},
+  };
+}
+
 function emptyState() {
-  // 将来ここに timetable / attendance などを追加していく
-  return { version: SCHEMA_VERSION, tasks: [], lastImportAt: null };
+  // 将来ここに attendance などを追加していく
+  return { version: SCHEMA_VERSION, tasks: [], lastImportAt: null, timetable: defaultTimetable() };
 }
 
 function loadState() {
@@ -32,6 +48,9 @@ function loadState() {
 function migrate(s) {
   if (!s || typeof s !== 'object') return emptyState();
   if (!Array.isArray(s.tasks)) s.tasks = [];
+  // v1 → v2: 時間割を追加
+  if (!s.timetable || typeof s.timetable !== 'object') s.timetable = defaultTimetable();
+  if (!s.timetable.classes) s.timetable.classes = {};
   // バージョンが上がったらここで変換処理を追加する
   s.version = SCHEMA_VERSION;
   return s;
@@ -161,7 +180,7 @@ function toggleDone(id, done) {
   t.done = done;
   t.doneAt = done ? Date.now() : null;
   saveState();
-  render();
+  renderAll();
 }
 
 function deleteTask(id) {
@@ -173,7 +192,7 @@ function deleteTask(id) {
   if (!confirm(`「${t.title}」を削除しますか?${note}`)) return;
   state.tasks = state.tasks.filter((x) => x.id !== id);
   saveState();
-  render();
+  renderAll();
 }
 
 function toast(msg) {
@@ -216,7 +235,7 @@ $('#form-add').addEventListener('submit', (ev) => {
     addedAt: Date.now(),
   });
   saveState();
-  render();
+  renderAll();
   toast('追加しました');
 });
 
@@ -297,7 +316,7 @@ function applyMerge(incoming) {
   }
   state.lastImportAt = Date.now();
   saveState();
-  render();
+  renderAll();
 }
 
 let pendingImport = null;
@@ -362,16 +381,201 @@ function checkHashImport() {
   if (text) openImport(text);
 }
 
+/* ---------- 時間割 ---------- */
+
+function toMin(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function classKey(day, period) { return `${day}-${period}`; }
+
+// 授業に結びつく未完了の課題(manabaのコース名が一致、なければ授業名を含むもの)
+function tasksForClass(c) {
+  if (!c) return [];
+  return state.tasks
+    .filter((t) => !t.done && t.course && (c.course ? t.course === c.course : t.course.includes(c.name)))
+    .sort((a, b) => a.end - b.end);
+}
+
+// 今の時限(授業中)と、今日このあとの授業
+function nowInfo(date = new Date()) {
+  const tt = state.timetable;
+  const day = date.getDay();
+  const min = date.getHours() * 60 + date.getMinutes();
+  let current = null;
+  const upcoming = [];
+  if (tt.days.includes(day)) {
+    tt.periods.forEach((p, i) => {
+      const c = tt.classes[classKey(day, i + 1)];
+      if (min >= toMin(p.start) && min < toMin(p.end)) current = { period: i + 1, p, c };
+      else if (min < toMin(p.start) && c) upcoming.push({ period: i + 1, p, c });
+    });
+  }
+  return { day, current, next: upcoming[0] || null };
+}
+
+function renderTimetable() {
+  const tt = state.timetable;
+  const now = new Date();
+  const { day, current, next } = nowInfo(now);
+
+  // 上部: 今の授業 / 次の授業
+  const lines = [];
+  if (current && current.c) {
+    lines.push(el('div', {}, el('b', {}, `今 ${current.period}限 `), current.c.name,
+      current.c.room ? el('span', { class: 'muted' }, `(${current.c.room})`) : null,
+      el('span', { class: 'muted' }, ` 〜${current.p.end}`)));
+  }
+  if (next) {
+    lines.push(el('div', {}, el('b', {}, `次 ${next.period}限 `), next.c.name,
+      next.c.room ? el('span', { class: 'muted' }, `(${next.c.room})`) : null,
+      el('span', { class: 'muted' }, ` ${next.p.start}〜`)));
+  }
+  if (!lines.length) {
+    const any = tt.days.includes(day) && tt.periods.some((_, i) => tt.classes[classKey(day, i + 1)]);
+    lines.push(el('div', { class: 'muted' }, any ? '今日の授業はもうありません' : '今日の授業はありません'));
+  }
+  $('#tt-now').replaceChildren(...lines);
+
+  // 表
+  const cells = [el('div', { class: 'tt-corner' })];
+  for (const d of tt.days) {
+    cells.push(el('div', { class: `tt-head ${d === day ? 'today' : ''}` }, WD[d]));
+  }
+  tt.periods.forEach((p, i) => {
+    const period = i + 1;
+    cells.push(el('div', { class: `tt-period ${current && current.period === period ? 'now' : ''}` },
+      el('b', {}, period), el('span', {}, p.start), el('span', {}, p.end)));
+    for (const d of tt.days) {
+      const c = tt.classes[classKey(d, period)];
+      const isNow = d === day && current && current.period === period;
+      const n = tasksForClass(c).length;
+      cells.push(el('button', {
+        class: `tt-cell ${c ? 'filled' : ''} ${d === day ? 'today' : ''} ${isNow ? 'now' : ''}`,
+        'aria-label': `${WD[d]}曜${period}限 ${c ? c.name : '空き'}`,
+        onclick: () => openClass(d, period),
+      },
+        c ? el('span', { class: 'tt-name' }, c.name) : null,
+        c && c.room ? el('span', { class: 'tt-room' }, c.room) : null,
+        n ? el('span', { class: 'tt-badge' }, `課題${n}`) : null,
+      ));
+    }
+  });
+  const grid = $('#tt-grid');
+  grid.style.gridTemplateColumns = `34px repeat(${tt.days.length}, minmax(0, 1fr))`;
+  grid.replaceChildren(...cells);
+
+  // 単位の合計(同じ授業名は1回だけ数える)
+  const seen = new Map();
+  for (const c of Object.values(tt.classes)) {
+    if (c && c.credits && !seen.has(c.name)) seen.set(c.name, Number(c.credits) || 0);
+  }
+  const total = [...seen.values()].reduce((a, b) => a + b, 0);
+  $('#tt-credits').textContent = seen.size ? `登録している単位の合計: ${total}単位` : '';
+}
+
+let editingSlot = null;
+
+function openClass(day, period) {
+  const tt = state.timetable;
+  const p = tt.periods[period - 1];
+  const c = tt.classes[classKey(day, period)];
+  editingSlot = { day, period };
+  const f = $('#form-class');
+  f.reset();
+  $('#class-slot').textContent = `${WD[day]}曜 ${period}限(${p.start}〜${p.end})`;
+  if (c) {
+    f.name.value = c.name || '';
+    f.room.value = c.room || '';
+    f.teacher.value = c.teacher || '';
+    f.credits.value = c.credits ?? '';
+    f.course.value = c.course || '';
+  }
+  // manabaから取り込んだコース名を候補に出す
+  const courses = [...new Set(state.tasks.map((t) => t.course).filter(Boolean))].sort();
+  $('#course-list').replaceChildren(...courses.map((x) => el('option', { value: x })));
+
+  const tasks = tasksForClass(c);
+  const now = Date.now();
+  $('#class-tasks').replaceChildren(...(tasks.length ? [
+    el('div', { class: 'small muted' }, 'この授業の未完了の課題'),
+    ...tasks.map((t) => el('div', { class: `class-task ${urgency(t.end, now)}` },
+      t.url ? el('a', { href: t.url, target: '_blank', rel: 'noopener' }, t.title) : el('span', {}, t.title),
+      el('span', { class: 'small' }, ` ${fmtDue(t.end)} ${fmtRemain(t.end, now)}`))),
+  ] : []));
+  $('#btn-class-clear').hidden = !c;
+  $('#dlg-class').showModal();
+}
+
+$('#form-class').addEventListener('submit', (ev) => {
+  if (!editingSlot || (ev.submitter && ev.submitter.value !== 'ok')) return;
+  const f = ev.target;
+  const name = f.name.value.trim();
+  if (!name) return;
+  const credits = f.credits.value === '' ? null : Number(f.credits.value);
+  state.timetable.classes[classKey(editingSlot.day, editingSlot.period)] = {
+    name,
+    room: f.room.value.trim(),
+    teacher: f.teacher.value.trim(),
+    credits: Number.isFinite(credits) ? credits : null,
+    course: f.course.value.trim(),
+  };
+  saveState();
+  renderTimetable();
+  toast('保存しました');
+});
+
+$('#btn-class-clear').addEventListener('click', () => {
+  if (!editingSlot) return;
+  const key = classKey(editingSlot.day, editingSlot.period);
+  const c = state.timetable.classes[key];
+  if (c && !confirm(`「${c.name}」をこのコマから消しますか?`)) return;
+  delete state.timetable.classes[key];
+  saveState();
+  renderTimetable();
+  $('#dlg-class').close();
+});
+
+/* ---------- 画面の切り替え ---------- */
+
+const TAB_KEY = 'manabaPwa.tab';
+let currentView = 'tasks';
+try { currentView = localStorage.getItem(TAB_KEY) || 'tasks'; } catch { /* ignore */ }
+
+function showView(view) {
+  currentView = view === 'timetable' ? 'timetable' : 'tasks';
+  try { localStorage.setItem(TAB_KEY, currentView); } catch { /* ignore */ }
+  $('#view-tasks').hidden = currentView !== 'tasks';
+  $('#view-timetable').hidden = currentView !== 'timetable';
+  $('#btn-import').hidden = currentView !== 'tasks';
+  $('#page-title').textContent = currentView === 'tasks' ? '未提出課題' : '時間割';
+  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.view === currentView));
+  renderAll();
+  window.scrollTo(0, 0);
+}
+
+document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+
+function renderAll() {
+  render();
+  renderTimetable();
+  const urgent = state.tasks.filter((t) => !t.done && urgency(t.end, Date.now()) === 'urgent').length;
+  const badge = $('#tab-badge');
+  badge.hidden = !urgent;
+  badge.textContent = urgent;
+}
+
 /* ---------- 起動 ---------- */
 
 $('#btn-import').addEventListener('click', () => openImport());
 $('#btn-add').addEventListener('click', openAdd);
 
-render();
+showView(currentView);
 checkHashImport();
 window.addEventListener('hashchange', checkHashImport);
-setInterval(render, 60 * 1000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+setInterval(renderAll, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) renderAll(); });
 
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator) {
@@ -379,4 +583,4 @@ if ('serviceWorker' in navigator) {
 }
 
 // テスト用に公開
-window.__app = { parseManabaDate, parseImport };
+window.__app = { parseManabaDate, parseImport, nowInfo };
