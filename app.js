@@ -184,6 +184,11 @@ function el(tag, attrs = {}, ...children) {
   return e;
 }
 
+// replaceChildren の null / false を無視する版(条件付きの要素をそのまま渡せる)
+function setKids(node, ...kids) {
+  node.replaceChildren(...kids.filter((k) => k != null && k !== false));
+}
+
 function renderTask(t, now) {
   const u = t.done ? '' : urgency(t.end, now);
   const titleNode = t.url
@@ -218,8 +223,8 @@ function render() {
   const open = state.tasks.filter((t) => !t.done).sort((a, b) => a.end - b.end);
   const done = state.tasks.filter((t) => t.done).sort((a, b) => b.end - a.end);
 
-  $('#list-open').replaceChildren(...open.map((t) => renderTask(t, now)));
-  $('#list-done').replaceChildren(...done.map((t) => renderTask(t, now)));
+  setKids($('#list-open'), ...open.map((t) => renderTask(t, now)));
+  setKids($('#list-done'), ...done.map((t) => renderTask(t, now)));
 
   $('#empty').hidden = open.length > 0;
   $('#legend').hidden = open.length === 0;
@@ -418,26 +423,26 @@ function previewImport() {
   const applyBtn = $('#btn-import-apply');
   pendingImport = null;
   applyBtn.disabled = true;
-  if (!text.trim()) { box.replaceChildren(); return; }
+  if (!text.trim()) { setKids(box); return; }
   try {
     const parsed = parseImport(text);
     pendingImport = parsed;
     applyBtn.disabled = false;
     if (parsed.kind === 'timetable') {
-      box.replaceChildren(el('div', {}, `時間割: ${parsed.slots.length}コマを「${termLabel(state.timetable.currentTerm)}」に取り込みます`),
+      setKids(box, el('div', {}, `時間割: ${parsed.slots.length}コマを「${termLabel(state.timetable.currentTerm)}」に取り込みます`),
         el('div', {}, 'manabaから取り込んだ時間割で置き換えます(教室・単位数などの入力は、同じ授業なら残ります)'));
       return;
     }
     const { items, skipped } = parsed;
     const p = planMerge(items);
     applyBtn.disabled = false;
-    box.replaceChildren(
+    setKids(box, 
       el('div', {}, `読み取り: ${items.length}件` + (skipped ? `(締切なしなどで除外 ${skipped}件)` : '')),
       el('div', {}, `新規 ${p.added}件 ・ 更新 ${p.updated}件`),
       p.missing ? el('div', {}, `一覧から消えた課題 ${p.missing}件(「一覧にありません」と表示します)`) : null,
     );
   } catch (e) {
-    box.replaceChildren(el('div', { class: 'err' }, e.message));
+    setKids(box, el('div', { class: 'err' }, e.message));
   }
 }
 
@@ -570,7 +575,7 @@ function renderTermSelect() {
   ids.add(tt.currentTerm);
   const sorted = [...ids].sort((a, b) => termOrder(b) - termOrder(a));
   const sel = $('#term-select');
-  sel.replaceChildren(...sorted.map((id) => {
+  setKids(sel, ...sorted.map((id) => {
     const n = tt.terms[id] ? Object.keys(tt.terms[id].classes).length : 0;
     const note = termOrder(id) === cur ? '(今の学期)' : n ? '' : '(空)';
     return el('option', { value: id, selected: id === tt.currentTerm }, termLabel(id) + note);
@@ -644,7 +649,7 @@ function renderTimetable() {
     const any = tt.days.includes(info.day) && tt.periods.some((_, i) => todays[classKey(info.day, i + 1)]);
     lines.push(el('div', { class: 'muted' }, any ? '今日の授業はもうありません' : '今日の授業はありません'));
   }
-  $('#tt-now').replaceChildren(...lines);
+  setKids($('#tt-now'), ...lines);
 
   // 表
   const cells = [el('div', { class: 'tt-corner' })];
@@ -680,7 +685,7 @@ function renderTimetable() {
   });
   const grid = $('#tt-grid');
   grid.style.gridTemplateColumns = `34px repeat(${tt.days.length}, minmax(0, 1fr))`;
-  grid.replaceChildren(...cells);
+  setKids(grid, ...cells);
 
   // 単位の合計(同じ授業名は1回だけ数える)
   const sumCredits = (list) => {
@@ -692,6 +697,7 @@ function renderTimetable() {
   // 全学期: 学期が違えば同じ授業名でも別に数える
   const allTotal = Object.values(tt.terms).reduce((a, t) => a + sumCredits(Object.values(t.classes)), 0);
   renderAttSummary();
+  renderPending();
   $('#tt-credits').textContent = allTotal
     ? `この学期の単位: ${termTotal}単位 ・ 全学期の合計: ${allTotal}単位`
     : '';
@@ -720,11 +726,11 @@ function openClass(day, period) {
   }
   // manabaから取り込んだコース名を候補に出す
   const courses = [...new Set(state.tasks.map((t) => t.course).filter(Boolean))].sort();
-  $('#course-list').replaceChildren(...courses.map((x) => el('option', { value: x })));
+  setKids($('#course-list'), ...courses.map((x) => el('option', { value: x })));
 
   const tasks = tasksForClass(c);
   const now = Date.now();
-  $('#class-tasks').replaceChildren(...(tasks.length ? [
+  setKids($('#class-tasks'), ...(tasks.length ? [
     el('div', { class: 'small muted' }, 'この授業の未完了の課題'),
     ...tasks.map((t) => el('div', { class: `class-task ${urgency(t.end, now)}` },
       t.url ? el('a', { href: t.url, target: '_blank', rel: 'noopener' }, t.title) : el('span', {}, t.title),
@@ -937,7 +943,7 @@ function renderClassAtt() {
   const key = classKey(day, period);
   const termId = state.timetable.currentTerm;
   const c = ttClasses()[key];
-  if (!c) { box.replaceChildren(); return; }
+  if (!c) { setKids(box); return; }
   const units = slotUnits(termId, key, c);
   const dateInput = $('#att-date') || el('input', { type: 'date', id: 'att-date', class: 'att-date' });
   if (!dateInput.value) dateInput.value = recentDateForUnit(unitForDate(units, dateStr(new Date())));
@@ -952,7 +958,7 @@ function renderClassAtt() {
       el('div', { class: 'att-row' }, attButtons(termId, u.akey, dateInput.value, refresh),
         el('button', { type: 'button', class: 'btn small-btn', onclick: () => openAttLog(u.akey) }, `記録を見る・編集(${n})`)));
   });
-  box.replaceChildren(
+  setKids(box, 
     el('div', { class: 'att-row' }, el('span', { class: 'small' }, '日付'), dateInput),
     ...blocks,
     isSplit(c) ? el('button', {
@@ -991,7 +997,7 @@ function renderAttLog() {
   $('#att-title').textContent = `${unitLabel(unit)}(${WD[day]}${period})`;
   const sum = attSummary(termId, unit, c);
   $('#att-stat').className = `att-head ${sum.level}`;
-  $('#att-stat').replaceChildren(el('b', {}, attText(sum)),
+  setKids($('#att-stat'), el('b', {}, attText(sum)),
     el('div', { class: 'small muted' }, `出席${sum.present} ・ 遅刻${sum.late} ・ 欠席${sum.absent}(全${sum.sessions}回 / 遅刻${sum.lateCount}回で欠席1回)`));
 
   // 年間予定があれば、今日までの授業日を全部並べる(記録していない日は「未記録」)
@@ -1004,7 +1010,7 @@ function renderAttLog() {
       return { date: ds, status: recs.has(ds) ? recs.get(ds).status : 'none', no: i >= 0 ? i + 1 : null };
     });
   const counts = { all: rows.length, absent: sum.absent, late: sum.late, present: sum.present, none: rows.filter((r) => r.status === 'none').length };
-  $('#att-filter').replaceChildren(...[['all', 'すべて'], ['absent', '欠席'], ['late', '遅刻'], ['present', '出席'], ['none', '未記録']]
+  setKids($('#att-filter'), ...[['all', 'すべて'], ['absent', '欠席'], ['late', '遅刻'], ['present', '出席'], ['none', '未記録']]
     .filter(([k]) => k !== 'none' || calDates.length)
     .map(([k, label]) => el('button', {
       type: 'button', class: `att-tab ${attFilter === k ? 'on' : ''}`,
@@ -1013,7 +1019,7 @@ function renderAttLog() {
 
   const refresh = () => { renderAttLog(); renderTimetable(); if (editingSlot) renderClassAtt(); };
   const list = rows.filter((r) => attFilter === 'all' || r.status === attFilter);
-  $('#att-list').replaceChildren(...(list.length ? list.map((r) => el('li', { class: `att-item ${r.status}` },
+  setKids($('#att-list'), ...(list.length ? list.map((r) => el('li', { class: `att-item ${r.status}` },
     el('span', { class: 'att-day' }, fmtDay(r.date), r.no ? el('small', {}, `第${r.no}回`) : null),
     attButtons(termId, key, r.date, refresh, true),
     r.status === 'none' ? el('span', { class: 'att-none small' }, '未記録') : el('button', {
@@ -1028,7 +1034,58 @@ function renderAttLog() {
 
   const addDate = $('#att-add-date');
   addDate.onchange = renderAttLog;
-  $('#att-add-buttons').replaceChildren(attButtons(termId, key, addDate.value, refresh));
+  setKids($('#att-add-buttons'), attButtons(termId, key, addDate.value, refresh));
+}
+
+/* ---------- 記録し忘れ ---------- */
+// この機能を使い始めた日(attSince)以降で、授業が終わったのに出席を記録していないもの
+function pendingAttendance(now = new Date()) {
+  const tt = state.timetable;
+  const termId = termIdFor(now);
+  const term = tt.terms[termId];
+  if (!term) return [];
+  if (!tt.attSince) { tt.attSince = dateStr(now); saveState(); }
+  const today = dateStr(now);
+  const min = now.getHours() * 60 + now.getMinutes();
+  const out = [];
+  for (const [slotKey, c] of Object.entries(term.classes)) {
+    const period = Number(slotKey.split('-')[1]);
+    const p = tt.periods[period - 1];
+    if (!p) continue;
+    for (const u of slotUnits(termId, slotKey, c)) {
+      if (!u.dates) continue; // 年間予定がない学期は対象外
+      const recs = new Set(attList(termId, u.akey).map((r) => r.date));
+      for (const ds of u.dates) {
+        if (ds < tt.attSince || ds > today) continue;
+        if (ds === today && min < toMin(p.end)) continue; // 今日はまだ終わっていない
+        if (!recs.has(ds)) out.push({ termId, unit: u, c, date: ds, p });
+      }
+    }
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date) || b.unit.period - a.unit.period);
+}
+
+function renderPending() {
+  const list = pendingAttendance();
+  const box = $('#att-pending');
+  const badge = $('#tab-badge-tt');
+  badge.hidden = !list.length;
+  badge.textContent = list.length;
+  if ('setAppBadge' in navigator) {
+    try { (list.length ? navigator.setAppBadge(list.length) : navigator.clearAppBadge()).catch(() => {}); } catch { /* 未対応 */ }
+  }
+  if (!list.length) { box.hidden = true; setKids(box); return; }
+  box.hidden = false;
+  const today = dateStr(new Date());
+  setKids(box, 
+    el('div', { class: 'att-pending-head' }, el('b', {}, `出席をまだ記録していない授業(${list.length})`)),
+    ...list.slice(0, 10).map((x) => el('div', { class: 'att-pending-row' },
+      el('div', { class: 'att-pending-name' },
+        el('span', { class: 'small muted' }, `${x.date === today ? '今日' : fmtDay(x.date)} ${x.unit.period}限 `),
+        isSplit(x.c) ? unitLabel(x.unit) : x.unit.name),
+      attButtons(x.termId, x.unit.akey, x.date, () => renderTimetable()))),
+    list.length > 10 ? el('div', { class: 'small muted' }, `ほか${list.length - 10}件(「出席のまとめ」から記録できます)`) : null,
+  );
 }
 
 // 時間割画面の下: 授業ごとの出席のまとめ
@@ -1042,8 +1099,8 @@ function renderAttSummary() {
     return d1 - d2 || p1 - p2;
   });
   const box = $('#att-summary');
-  if (!keys.length) { box.replaceChildren(); return; }
-  box.replaceChildren(
+  if (!keys.length) { setKids(box); return; }
+  setKids(box, 
     el('h3', {}, '出席のまとめ'),
     el('div', { class: 'att-sum-list' }, ...keys.flatMap((key) => {
       const c = classes[key];

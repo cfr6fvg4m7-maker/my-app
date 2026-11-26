@@ -302,3 +302,12 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .att-item.none { background: transparent; border: 1px dashed var(--border); }
 .att-none { margin-left: auto; color: var(--muted); padding: 0 4px; }
 .att-unit { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
+
+.att-pending {
+  background: var(--soon-bg); border: 1px solid var(--soon-bar); border-radius: 12px;
+  padding: 10px 12px; margin: 0 4px 10px; display: grid; gap: 8px;
+}
+.att-pending-head { font-size: 14px; }
+.att-pending-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.att-pending-name { font-size: 14px; font-weight: 600; min-width: 0; }
+.att-pending .att-btn { padding: 5px 9px; font-size: 13px; }
