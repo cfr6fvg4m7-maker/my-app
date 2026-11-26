@@ -393,3 +393,8 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
   position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
   font-size: 16px; border: none; padding: 0; margin: 0;
 }
+
+/* ---------- 編集・メモ ---------- */
+.task-actions { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.task .edit { appearance: none; border: none; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 4px; cursor: pointer; }
+.memo { font-size: 13px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }

@@ -216,12 +216,15 @@ function renderTask(t, now) {
       badges.length ? el('div', {}, ...badges) : null,
       titleNode,
       t.course ? el('div', { class: 'meta' }, t.course) : null,
+      t.memo ? el('div', { class: 'memo' }, `📝 ${t.memo}`) : null,
       el('div', { class: 'due' },
         t.source === 'todo' ? 'いつまで ' : '締切 ', fmtTaskDue(t),
         t.done ? null : el('span', { class: 'remain' }, fmtRemain(t.end, now)),
       ),
     ),
-    el('button', { class: 'del', 'aria-label': '削除', onclick: () => deleteTask(t.id) }, '×'),
+    el('div', { class: 'task-actions' },
+      el('button', { class: 'edit', 'aria-label': '編集', onclick: () => openTodo('', t.id) }, '✎'),
+      el('button', { class: 'del', 'aria-label': '削除', onclick: () => deleteTask(t.id) }, '×')),
   );
 }
 
@@ -1355,31 +1358,75 @@ function fillCourseSelect(sel, selected, allowEmpty) {
 }
 
 // --- やること ---
-function openTodo(course = '') {
+let editingTaskId = null;
+
+// やることの追加・編集。id を渡すと編集(manaba の課題はメモだけ変えられる)
+function openTodo(course = '', id = null) {
+  const t = id ? state.tasks.find((x) => x.id === id) : null;
+  editingTaskId = t ? t.id : null;
+  const fromManaba = Boolean(t && t.source === 'manaba');
   const f = $('#form-todo');
   f.reset();
-  fillCourseSelect(f.course, course, true);
-  f.date.value = dateStr(new Date(Date.now() + DAY));
+  fillCourseSelect(f.course, t ? t.course : course, true);
+  if (t) {
+    const d = new Date(t.end);
+    f.title.value = t.title;
+    f.date.value = dateStr(d);
+    f.time.value = t.allDay ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    f.url.value = t.url || '';
+    f.memo.value = t.memo || '';
+  } else {
+    f.date.value = dateStr(new Date(Date.now() + DAY));
+  }
+  f.querySelectorAll('.todo-edit').forEach((l) => { l.hidden = fromManaba; });
+  // manaba の課題は入力欄を隠すので、必須チェックも外す
+  f.title.required = !fromManaba;
+  f.date.required = !fromManaba;
+  $('#todo-note').hidden = !fromManaba;
+  $('#todo-note').textContent = fromManaba
+    ? `manabaの課題「${t.title}」(締切 ${fmtDue(t.end)})。内容と締切はmanabaから取り込むので、ここではメモだけ書けます。`
+    : '';
+  $('#todo-title').textContent = !t ? 'やることを追加' : fromManaba ? 'メモを書く' : '編集';
+  $('#btn-todo-ok').textContent = t ? '保存' : '追加';
+  $('#btn-todo-del').hidden = !t;
   $('#dlg-todo').showModal();
 }
 
 $('#form-todo').addEventListener('submit', (ev) => {
   if (ev.submitter && ev.submitter.value !== 'ok') return;
   const f = ev.target;
-  const title = f.title.value.trim();
-  if (!title || !f.date.value) return;
-  const [y, m, d] = f.date.value.split('-').map(Number);
-  const [hh, mm] = f.time.value ? f.time.value.split(':').map(Number) : [23, 59];
-  state.tasks.push({
-    id: 'td:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    source: 'todo', type: '', title, course: f.course.value, url: '',
-    start: null, end: new Date(y, m - 1, d, hh, mm).getTime(), allDay: !f.time.value,
-    done: false, doneAt: null, missing: false, addedAt: Date.now(),
-  });
+  const t = editingTaskId && state.tasks.find((x) => x.id === editingTaskId);
+  const memo = f.memo.value.trim();
+  if (t && t.source === 'manaba') {
+    t.memo = memo;
+  } else {
+    const title = f.title.value.trim();
+    if (!title || !f.date.value) return;
+    const [y, m, d] = f.date.value.split('-').map(Number);
+    const [hh, mm] = f.time.value ? f.time.value.split(':').map(Number) : [23, 59];
+    const fields = {
+      title, course: f.course.value, url: f.url.value.trim(), memo,
+      end: new Date(y, m - 1, d, hh, mm).getTime(), allDay: !f.time.value,
+    };
+    if (t) Object.assign(t, fields);
+    else {
+      state.tasks.push({
+        id: 'td:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        source: 'todo', type: '', start: null, done: false, doneAt: null, missing: false, addedAt: Date.now(), ...fields,
+      });
+    }
+  }
   saveState();
   renderAll();
   if ($('#dlg-class').open && editingSlot) openClass(editingSlot.day, editingSlot.period);
-  toast('やることを追加しました');
+  toast(t ? '保存しました' : 'やることを追加しました');
+});
+
+$('#btn-todo-del').addEventListener('click', () => {
+  if (!editingTaskId) return;
+  const before = state.tasks.length;
+  deleteTask(editingTaskId);
+  if (state.tasks.length < before) $('#dlg-todo').close();
 });
 
 document.querySelectorAll('[data-add-todo]').forEach((b) => b.addEventListener('click', () => openTodo()));

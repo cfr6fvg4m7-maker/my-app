@@ -182,14 +182,19 @@
   <!-- やること -->
   <dialog id="dlg-todo">
     <form method="dialog" class="dlg" id="form-todo">
-      <h2>やることを追加</h2>
-      <label>やること<input name="title" required placeholder="例: 小テストの勉強"></label>
-      <label>授業(任意)<select name="course"></select></label>
-      <label>いつまでに<input name="date" type="date" required></label>
-      <label>時刻(任意)<input name="time" type="time"></label>
+      <h2 id="todo-title">やることを追加</h2>
+      <p id="todo-note" class="small muted" hidden></p>
+      <label class="todo-edit">やること<input name="title" required placeholder="例: 小テストの勉強"></label>
+      <label class="todo-edit">授業(任意)<select name="course"></select></label>
+      <label class="todo-edit">いつまでに<input name="date" type="date" required></label>
+      <label class="todo-edit">時刻(任意)<input name="time" type="time"></label>
+      <label class="todo-edit">リンク(任意)<input name="url" type="url" placeholder="https://"></label>
+      <label>メモ(任意)<textarea name="memo" rows="2" placeholder="例: Wordで提出・800字"></textarea></label>
       <div class="dlg-actions">
+        <button type="button" id="btn-todo-del" class="btn danger" hidden>削除</button>
+        <span class="spacer"></span>
         <button value="cancel" class="btn" formnovalidate>キャンセル</button>
-        <button type="submit" value="ok" class="btn primary">追加</button>
+        <button type="submit" value="ok" class="btn primary" id="btn-todo-ok">追加</button>
       </div>
     </form>
   </dialog>
