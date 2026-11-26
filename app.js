@@ -6,7 +6,7 @@
  * ============================================================ */
 
 const STORAGE_KEY = 'manabaPwa';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
@@ -23,14 +23,64 @@ function defaultTimetable() {
       { start: '14:50', end: '16:20' },
       { start: '16:30', end: '18:00' },
     ],
-    // キーは "曜日-時限" (例: "1-2" = 月曜2限)
-    classes: {},
+    // 学期ごとの時間割。キーは "2026-spring" / "2026-fall"
+    // classes のキーは "曜日-時限" (例: "1-2" = 月曜2限)
+    terms: {},
+    currentTerm: null, // 表示中の学期
+    autoTerm: null,    // 最後に自動で合わせた学期(学期が変わったら自動で切り替えるため)
   };
+}
+
+/* ---------- 学期 ---------- */
+// 年度は4月始まり。4〜8月を春学期、9〜翌3月を秋学期とする。
+function termIdFor(date = new Date()) {
+  const m = date.getMonth() + 1;
+  const year = m >= 4 ? date.getFullYear() : date.getFullYear() - 1;
+  return `${year}-${m >= 4 && m <= 8 ? 'spring' : 'fall'}`;
+}
+
+function termLabel(id) {
+  const [y, season] = id.split('-');
+  return `${y}年度 ${season === 'spring' ? '春学期' : '秋学期'}`;
+}
+
+// 学期を順番に並べるための数値(新しいほど大きい)
+function termOrder(id) {
+  const [y, season] = id.split('-');
+  return Number(y) * 2 + (season === 'fall' ? 1 : 0);
+}
+
+function termFromOrder(n) {
+  return `${Math.floor(n / 2)}-${n % 2 ? 'fall' : 'spring'}`;
+}
+
+function ensureTerm(tt, id) {
+  if (!tt.terms[id]) tt.terms[id] = { classes: {} };
+  return tt.terms[id];
+}
+
+// 起動時: 今日の学期を用意し、学期が変わっていたら自動で切り替える
+function syncTerm(s, date = new Date()) {
+  const tt = s.timetable;
+  const id = termIdFor(date);
+  ensureTerm(tt, id);
+  if (tt.autoTerm !== id || !tt.currentTerm || !tt.terms[tt.currentTerm]) {
+    tt.currentTerm = id;
+    tt.autoTerm = id;
+  }
+}
+
+// 表示中の学期の時間割
+function ttClasses() {
+  const tt = state.timetable;
+  return ensureTerm(tt, tt.currentTerm || termIdFor()).classes;
 }
 
 function emptyState() {
   // 将来ここに attendance などを追加していく
-  return { version: SCHEMA_VERSION, tasks: [], lastImportAt: null, timetable: defaultTimetable() };
+  const s = { version: SCHEMA_VERSION, tasks: [], lastImportAt: null, timetable: defaultTimetable() };
+  syncTerm(s);
+  return s;
 }
 
 function loadState() {
@@ -50,9 +100,15 @@ function migrate(s) {
   if (!Array.isArray(s.tasks)) s.tasks = [];
   // v1 → v2: 時間割を追加
   if (!s.timetable || typeof s.timetable !== 'object') s.timetable = defaultTimetable();
-  if (!s.timetable.classes) s.timetable.classes = {};
+  // v2 → v3: 時間割を学期ごとに分ける(今までの時間割は今の学期に入れる)
+  if (!s.timetable.terms) {
+    s.timetable.terms = {};
+    if (s.timetable.classes) s.timetable.terms[termIdFor()] = { classes: s.timetable.classes };
+  }
+  delete s.timetable.classes;
   // バージョンが上がったらここで変換処理を追加する
   s.version = SCHEMA_VERSION;
+  syncTerm(s);
   return s;
 }
 
@@ -61,6 +117,7 @@ function saveState() {
 }
 
 let state = loadState();
+try { saveState(); } catch { /* 保存できない環境でも表示は続ける */ } // 変換後の形で保存しておく
 
 /* ---------- 日付ユーティリティ ---------- */
 
@@ -362,7 +419,7 @@ function previewImport() {
     pendingImport = parsed;
     applyBtn.disabled = false;
     if (parsed.kind === 'timetable') {
-      box.replaceChildren(el('div', {}, `時間割: ${parsed.slots.length}コマを読み取りました`),
+      box.replaceChildren(el('div', {}, `時間割: ${parsed.slots.length}コマを「${termLabel(state.timetable.currentTerm)}」に取り込みます`),
         el('div', {}, 'manabaから取り込んだ時間割で置き換えます(教室・単位数などの入力は、同じ授業なら残ります)'));
       return;
     }
@@ -450,7 +507,7 @@ function tasksForClass(c) {
 // manaba のコース一覧(曜日表示)から取り込んだ時間割を反映する。
 // manaba 由来のコマは置き換え、手入力の教室・先生・単位数は同じ授業なら引き継ぐ。
 function applyTimetable(slots) {
-  const classes = state.timetable.classes;
+  const classes = ttClasses();
   const keys = new Set(slots.map((x) => classKey(x.day, x.period)));
   for (const [k, c] of Object.entries(classes)) {
     if (c && c.source === 'manaba' && !keys.has(k)) delete classes[k];
@@ -479,13 +536,14 @@ function applyTimetable(slots) {
 // 今の時限(授業中)と、今日このあとの授業
 function nowInfo(date = new Date()) {
   const tt = state.timetable;
+  const todays = (tt.terms[termIdFor(date)] || { classes: {} }).classes;
   const day = date.getDay();
   const min = date.getHours() * 60 + date.getMinutes();
   let current = null;
   const upcoming = [];
   if (tt.days.includes(day)) {
     tt.periods.forEach((p, i) => {
-      const c = tt.classes[classKey(day, i + 1)];
+      const c = todays[classKey(day, i + 1)];
       if (min >= toMin(p.start) && min < toMin(p.end)) current = { period: i + 1, p, c };
       else if (min < toMin(p.start) && c) upcoming.push({ period: i + 1, p, c });
     });
@@ -493,14 +551,47 @@ function nowInfo(date = new Date()) {
   return { day, current, next: upcoming[0] || null };
 }
 
+function renderTermSelect() {
+  const tt = state.timetable;
+  const ids = new Set(Object.keys(tt.terms));
+  const cur = termOrder(termIdFor());
+  // 前の学期と次の学期は、まだなくても選べるようにする
+  ids.add(termFromOrder(cur - 1));
+  ids.add(termFromOrder(cur + 1));
+  ids.add(tt.currentTerm);
+  const sorted = [...ids].sort((a, b) => termOrder(b) - termOrder(a));
+  const sel = $('#term-select');
+  sel.replaceChildren(...sorted.map((id) => {
+    const n = tt.terms[id] ? Object.keys(tt.terms[id].classes).length : 0;
+    const note = termOrder(id) === cur ? '(今の学期)' : n ? '' : '(空)';
+    return el('option', { value: id, selected: id === tt.currentTerm }, termLabel(id) + note);
+  }));
+}
+
+$('#term-select').addEventListener('change', (ev) => {
+  const tt = state.timetable;
+  tt.currentTerm = ev.target.value;
+  ensureTerm(tt, tt.currentTerm);
+  saveState();
+  renderTimetable();
+});
+
 function renderTimetable() {
   const tt = state.timetable;
+  const classes = ttClasses();
   const now = new Date();
-  const { day, current, next } = nowInfo(now);
+  const viewingNow = tt.currentTerm === termIdFor(now);
+  const info = nowInfo(now);
+  // 今の学期を表示しているときだけ、今日・今の時限を強調する
+  const day = viewingNow ? info.day : -1;
+  const current = viewingNow ? info.current : null;
+  const next = info.next;
+  renderTermSelect();
 
   // 上部: 今の授業 / 次の授業
   const lines = [];
-  if (current && current.c) {
+  if (info.current && info.current.c) {
+    const current = info.current;
     lines.push(el('div', {}, el('b', {}, `今 ${current.period}限 `), current.c.name,
       current.c.room ? el('span', { class: 'muted' }, `(${current.c.room})`) : null,
       el('span', { class: 'muted' }, ` 〜${current.p.end}`)));
@@ -511,7 +602,8 @@ function renderTimetable() {
       el('span', { class: 'muted' }, ` ${next.p.start}〜`)));
   }
   if (!lines.length) {
-    const any = tt.days.includes(day) && tt.periods.some((_, i) => tt.classes[classKey(day, i + 1)]);
+    const todays = (tt.terms[termIdFor(now)] || { classes: {} }).classes;
+    const any = tt.days.includes(info.day) && tt.periods.some((_, i) => todays[classKey(info.day, i + 1)]);
     lines.push(el('div', { class: 'muted' }, any ? '今日の授業はもうありません' : '今日の授業はありません'));
   }
   $('#tt-now').replaceChildren(...lines);
@@ -526,7 +618,7 @@ function renderTimetable() {
     cells.push(el('div', { class: `tt-period ${current && current.period === period ? 'now' : ''}` },
       el('b', {}, period), el('span', {}, p.start), el('span', {}, p.end)));
     for (const d of tt.days) {
-      const c = tt.classes[classKey(d, period)];
+      const c = classes[classKey(d, period)];
       const isNow = d === day && current && current.period === period;
       const n = tasksForClass(c).length;
       cells.push(el('button', {
@@ -547,12 +639,17 @@ function renderTimetable() {
   grid.replaceChildren(...cells);
 
   // 単位の合計(同じ授業名は1回だけ数える)
-  const seen = new Map();
-  for (const c of Object.values(tt.classes)) {
-    if (c && c.credits && !seen.has(c.name)) seen.set(c.name, Number(c.credits) || 0);
-  }
-  const total = [...seen.values()].reduce((a, b) => a + b, 0);
-  $('#tt-credits').textContent = seen.size ? `登録している単位の合計: ${total}単位` : '';
+  const sumCredits = (list) => {
+    const seen = new Map();
+    for (const c of list) if (c && c.credits && !seen.has(c.name)) seen.set(c.name, Number(c.credits) || 0);
+    return [...seen.values()].reduce((a, b) => a + b, 0);
+  };
+  const termTotal = sumCredits(Object.values(classes));
+  // 全学期: 学期が違えば同じ授業名でも別に数える
+  const allTotal = Object.values(tt.terms).reduce((a, t) => a + sumCredits(Object.values(t.classes)), 0);
+  $('#tt-credits').textContent = allTotal
+    ? `この学期の単位: ${termTotal}単位 ・ 全学期の合計: ${allTotal}単位`
+    : '';
 }
 
 let editingSlot = null;
@@ -560,7 +657,7 @@ let editingSlot = null;
 function openClass(day, period) {
   const tt = state.timetable;
   const p = tt.periods[period - 1];
-  const c = tt.classes[classKey(day, period)];
+  const c = ttClasses()[classKey(day, period)];
   editingSlot = { day, period };
   const f = $('#form-class');
   f.reset();
@@ -602,8 +699,8 @@ $('#form-class').addEventListener('submit', (ev) => {
   if (!name) return;
   const credits = f.credits.value === '' ? null : Number(f.credits.value);
   const key = classKey(editingSlot.day, editingSlot.period);
-  const old = state.timetable.classes[key] || {};
-  state.timetable.classes[key] = {
+  const old = ttClasses()[key] || {};
+  ttClasses()[key] = {
     ...old,
     nameEdited: old.name ? old.name !== name || old.nameEdited || false : false,
     name,
@@ -620,9 +717,9 @@ $('#form-class').addEventListener('submit', (ev) => {
 $('#btn-class-clear').addEventListener('click', () => {
   if (!editingSlot) return;
   const key = classKey(editingSlot.day, editingSlot.period);
-  const c = state.timetable.classes[key];
+  const c = ttClasses()[key];
   if (c && !confirm(`「${c.name}」をこのコマから消しますか?`)) return;
-  delete state.timetable.classes[key];
+  delete ttClasses()[key];
   saveState();
   renderTimetable();
   $('#dlg-class').close();
@@ -659,6 +756,7 @@ function showView(view) {
 document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
 
 function renderAll() {
+  syncTerm(state); // 開いたまま学期をまたいだときも切り替える
   render();
   renderTimetable();
   const urgent = state.tasks.filter((t) => !t.done && urgency(t.end, Date.now()) === 'urgent').length;
@@ -687,7 +785,7 @@ async function quickImport() {
     return;
   }
   if (parsed.kind === 'timetable') {
-    if (!confirm(`manabaの時間割(${parsed.slots.length}コマ)を取り込みますか?\n今の時間割は置き換わります(同じ授業の教室・単位数などは残ります)。`)) return;
+    if (!confirm(`manabaの時間割(${parsed.slots.length}コマ)を「${termLabel(state.timetable.currentTerm)}」に取り込みますか?\n今の時間割は置き換わります(同じ授業の教室・単位数などは残ります)。`)) return;
     const n = applyTimetable(parsed.slots);
     toast(`時間割を取り込みました(${n}コマ)`);
     showView('timetable');
