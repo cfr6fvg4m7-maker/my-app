@@ -1,0 +1,11 @@
+{
+  "name": "manaba-pwa",
+  "private": true,
+  "description": "manabaの未提出課題・時間割・出席を管理するiPhone用PWA(テスト用の設定)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
