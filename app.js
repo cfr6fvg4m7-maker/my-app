@@ -416,10 +416,24 @@ function buildIcs(tasks) {
   return lines.map(icsFold).join('\r\n') + '\r\n';
 }
 
-async function exportIcs() {
+let icsBlobUrl = null;
+
+function exportIcs() {
   const tasks = state.tasks.filter((t) => !t.done && t.end > Date.now());
   if (!tasks.length) { toast('出力する未完了の課題がありません'); return; }
   const ics = buildIcs(tasks);
+  // 方法A: data URL を新しい画面で開く
+  $('#ics-a').href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+  // 方法B: blob URL を新しい画面で開く
+  if (icsBlobUrl) URL.revokeObjectURL(icsBlobUrl);
+  icsBlobUrl = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+  $('#ics-b').href = icsBlobUrl;
+  $('#ics-share').onclick = () => shareIcs(ics);
+  $('#ics-count').textContent = `未完了の課題 ${tasks.length}件を、締切日時の予定として追加します。`;
+  $('#dlg-ics').showModal();
+}
+
+async function shareIcs(ics) {
   const name = 'manaba-kadai.ics';
   const file = new File([ics], name, { type: 'text/calendar' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {

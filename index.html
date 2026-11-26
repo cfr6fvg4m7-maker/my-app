@@ -76,6 +76,20 @@
     </form>
   </dialog>
 
+  <!-- .ics 出力ダイアログ -->
+  <dialog id="dlg-ics">
+    <form method="dialog" class="dlg">
+      <h2>カレンダーに追加</h2>
+      <p class="small muted" id="ics-count"></p>
+      <a id="ics-a" class="btn primary wide" target="_blank" rel="noopener">方法A でカレンダーに追加</a>
+      <a id="ics-b" class="btn primary wide" target="_blank" rel="noopener">方法B でカレンダーに追加</a>
+      <button type="button" id="ics-share" class="btn wide">ファイルとして共有・保存</button>
+      <div class="dlg-actions">
+        <button value="cancel" class="btn">閉じる</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="app.js"></script>
