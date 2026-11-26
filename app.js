@@ -416,20 +416,53 @@ function buildIcs(tasks) {
   return lines.map(icsFold).join('\r\n') + '\r\n';
 }
 
-let icsBlobUrl = null;
+/* ---------- iPhone のショートカット経由でカレンダーに追加 ----------
+ * iOS ではホーム画面アプリから .ics を直接カレンダーに渡せないため、
+ * ショートカット「課題をカレンダーへ」に 1行1件のテキストを渡す。
+ * 形式: タイトル|2026/11/27 18:00
+ */
+const SHORTCUT_NAME = '課題をカレンダーへ';
+
+function fmtShortcutDate(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function calTargets(onlyNew) {
+  return state.tasks
+    .filter((t) => !t.done && t.end > Date.now())
+    // 締切が変わった課題は「未送信」として扱う
+    .filter((t) => !onlyNew || t.calSentEnd !== t.end)
+    .sort((a, b) => a.end - b.end);
+}
+
+function sendToShortcut(onlyNew) {
+  const tasks = calTargets(onlyNew);
+  if (!tasks.length) { toast('カレンダーに送る課題はありません'); return; }
+  const text = tasks
+    .map((t) => `【締切】${t.title.replace(/[|\r\n]/g, ' ')}|${fmtShortcutDate(t.end)}`)
+    .join('\n');
+  for (const t of tasks) t.calSentEnd = t.end;
+  saveState();
+  $('#dlg-ics').close();
+  location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT_NAME)}&input=text&text=${encodeURIComponent(text)}`;
+}
 
 function exportIcs() {
-  const tasks = state.tasks.filter((t) => !t.done && t.end > Date.now());
-  if (!tasks.length) { toast('出力する未完了の課題がありません'); return; }
-  const ics = buildIcs(tasks);
-  // 方法A: data URL を新しい画面で開く
-  $('#ics-a').href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
-  // 方法B: blob URL を新しい画面で開く
-  if (icsBlobUrl) URL.revokeObjectURL(icsBlobUrl);
-  icsBlobUrl = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
-  $('#ics-b').href = icsBlobUrl;
-  $('#ics-share').onclick = () => shareIcs(ics);
-  $('#ics-count').textContent = `未完了の課題 ${tasks.length}件を、締切日時の予定として追加します。`;
+  const all = calTargets(false);
+  if (!all.length) { toast('カレンダーに追加できる未完了の課題がありません'); return; }
+  const fresh = calTargets(true);
+  $('#cal-count').textContent = fresh.length
+    ? `まだカレンダーに送っていない課題: ${fresh.length}件`
+    : 'すべての課題を送信済みです。';
+  $('#cal-new').disabled = fresh.length === 0;
+  $('#cal-new').textContent = `ショートカットでカレンダーに追加(${fresh.length}件)`;
+  $('#cal-new').onclick = () => sendToShortcut(true);
+  $('#cal-all').onclick = () => {
+    if (confirm(`未完了の課題 ${all.length}件をすべて送ります。\nすでにカレンダーにある課題は二重に登録されます。よろしいですか?`)) sendToShortcut(false);
+  };
+  $('#ics-share').onclick = () => shareIcs(buildIcs(all));
   $('#dlg-ics').showModal();
 }
 

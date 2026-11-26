@@ -36,7 +36,7 @@
 
     <section class="tools">
       <button id="btn-add" class="btn">＋ 手動で追加</button>
-      <button id="btn-ics" class="btn">カレンダー用 .ics を出力</button>
+      <button id="btn-ics" class="btn">カレンダーに追加</button>
       <a class="btn link" href="bookmarklet.html">ブックマークレットの設定</a>
     </section>
     <p id="last-import" class="muted small"></p>
@@ -80,10 +80,11 @@
   <dialog id="dlg-ics">
     <form method="dialog" class="dlg">
       <h2>カレンダーに追加</h2>
-      <p class="small muted" id="ics-count"></p>
-      <a id="ics-a" class="btn primary wide" target="_blank" rel="noopener">方法A でカレンダーに追加</a>
-      <a id="ics-b" class="btn primary wide" target="_blank" rel="noopener">方法B でカレンダーに追加</a>
-      <button type="button" id="ics-share" class="btn wide">ファイルとして共有・保存</button>
+      <p class="small muted" id="cal-count"></p>
+      <button type="button" id="cal-new" class="btn primary wide">ショートカットでカレンダーに追加</button>
+      <button type="button" id="cal-all" class="btn wide">未完了をすべてもう一度送る</button>
+      <a class="btn link wide" href="shortcut.html">ショートカットの作り方(最初に1回)</a>
+      <button type="button" id="ics-share" class="btn wide">.ics ファイルとして共有(メールで送る場合)</button>
       <div class="dlg-actions">
         <button value="cancel" class="btn">閉じる</button>
       </div>
