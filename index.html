@@ -22,7 +22,21 @@
     </div>
   </header>
 
-  <main id="view-tasks">
+  <main id="view-today" hidden>
+    <div id="today-head" class="today-head"></div>
+    <div id="today-stale" class="stale" hidden></div>
+    <section id="today-pending" class="att-pending" hidden></section>
+    <section class="today-sec">
+      <h3>今日の授業</h3>
+      <div id="today-classes"></div>
+    </section>
+    <section class="today-sec">
+      <h3>締切が近い課題 <button type="button" class="link-btn" data-goto="tasks">すべて見る ›</button></h3>
+      <ul id="today-tasks" class="task-list"></ul>
+    </section>
+  </main>
+
+  <main id="view-tasks" hidden>
     <div id="stale" class="stale" hidden></div>
     <p id="summary" class="summary"></p>
     <div id="legend" class="legend" hidden>
@@ -71,6 +85,9 @@
   </main>
 
   <nav class="tabbar">
+    <button class="tab" data-view="today">
+      <span class="tab-icon">☀︎</span>今日
+    </button>
     <button class="tab" data-view="tasks">
       <span class="tab-icon">✓</span>課題<span id="tab-badge" class="tab-badge" hidden></span>
     </button>

@@ -912,7 +912,8 @@ function attSummary(termId, unit, c) {
   const failAt = Math.ceil(sessions * rules.failRatio - 1e-9); // 15回なら5回で不可
   const allowed = failAt - 1;
   const remain = allowed - equiv;
-  const level = remain < 0 ? 'over' : remain <= 1 ? 'danger' : remain <= 2 ? 'warn' : '';
+  // まだ1回も休んでいなければ警告しない(8回の授業は最初から残り2回なので)
+  const level = remain < 0 ? 'over' : equiv === 0 ? '' : remain <= 1 ? 'danger' : remain <= 2 ? 'warn' : '';
   return { ...n, total: list.length, equiv, allowed, remain, level, sessions, lateCount };
 }
 
@@ -1067,13 +1068,17 @@ function pendingAttendance(now = new Date()) {
 
 function renderPending() {
   const list = pendingAttendance();
-  const box = $('#att-pending');
   const badge = $('#tab-badge-tt');
   badge.hidden = !list.length;
   badge.textContent = list.length;
   if ('setAppBadge' in navigator) {
     try { (list.length ? navigator.setAppBadge(list.length) : navigator.clearAppBadge()).catch(() => {}); } catch { /* 未対応 */ }
   }
+  fillPending($('#att-pending'), list);
+}
+
+// 記録し忘れの一覧を box に描く(時間割画面と今日画面で共通)
+function fillPending(box, list) {
   if (!list.length) { box.hidden = true; setKids(box); return; }
   box.hidden = false;
   const today = dateStr(new Date());
@@ -1083,7 +1088,7 @@ function renderPending() {
       el('div', { class: 'att-pending-name' },
         el('span', { class: 'small muted' }, `${x.date === today ? '今日' : fmtDay(x.date)} ${x.unit.period}限 `),
         isSplit(x.c) ? unitLabel(x.unit) : x.unit.name),
-      attButtons(x.termId, x.unit.akey, x.date, () => renderTimetable()))),
+      attButtons(x.termId, x.unit.akey, x.date, () => renderAll()))),
     list.length > 10 ? el('div', { class: 'small muted' }, `ほか${list.length - 10}件(「出席のまとめ」から記録できます)`) : null,
   );
 }
@@ -1180,31 +1185,125 @@ $('#file-import').addEventListener('change', (ev) => {
   if (f) importBackup(f);
 });
 
+/* ---------- 今日 ---------- */
+
+function fmtLongDate(d) {
+  return `${d.getMonth() + 1}月${d.getDate()}日(${WD[d.getDay()]})`;
+}
+
+// 次に授業がある日(年間予定と時間割から。見つからなければ null)
+function nextClassDay(now = new Date()) {
+  const tt = state.timetable;
+  const d = new Date(now);
+  for (let i = 1; i <= 60; i++) {
+    d.setDate(d.getDate() + 1);
+    const info = calDayInfo(d);
+    if (info && info.type !== 'class') continue;
+    const term = tt.terms[termIdFor(d)];
+    if (!term || !tt.days.includes(d.getDay())) continue;
+    const periods = tt.periods.map((p, j) => ({ period: j + 1, p, c: term.classes[classKey(d.getDay(), j + 1)] })).filter((x) => x.c);
+    if (periods.length) return { date: new Date(d), first: periods[0] };
+  }
+  return null;
+}
+
+function renderToday() {
+  const tt = state.timetable;
+  const now = new Date();
+  const ds = dateStr(now);
+  const termId = termIdFor(now);
+  const info = nowInfo(now);
+  const min = now.getHours() * 60 + now.getMinutes();
+
+  // 見出し: 日付・学期・今日の状況
+  const dayLabel = info.dayInfo && info.dayInfo.label
+    ? (info.dayInfo.type === 'class' ? info.dayInfo.label : `授業なし(${info.dayInfo.label})`)
+    : null;
+  setKids($('#today-head'),
+    el('div', { class: 'today-date' }, fmtLongDate(now)),
+    el('div', { class: 'small muted' }, termLabel(termId), dayLabel ? ` ・ ${dayLabel}` : ''));
+
+  // 記録し忘れ(今日の授業は下の「今日の授業」で記録するので除く)
+  fillPending($('#today-pending'), pendingAttendance(now).filter((x) => x.date !== ds));
+
+  // 今日の授業
+  const term = tt.terms[termId];
+  const noClass = info.dayInfo && info.dayInfo.type !== 'class';
+  const rows = [];
+  if (term && !noClass && tt.days.includes(info.day)) {
+    tt.periods.forEach((p, i) => {
+      const period = i + 1;
+      const key = classKey(info.day, period);
+      const c = term.classes[key];
+      if (!c) return;
+      const u = unitForDate(slotUnits(termId, key, c), ds);
+      const no = u && u.dates ? u.dates.indexOf(ds) + 1 : 0;
+      const state_ = min >= toMin(p.end) ? 'done' : min >= toMin(p.start) ? 'now' : 'later';
+      const sum = attSummary(termId, u, c);
+      const tasks = tasksForClass(c).length;
+      rows.push(el('div', { class: `today-class ${state_}` },
+        el('div', { class: 'today-period' }, el('b', {}, `${period}限`), el('span', {}, `${p.start}〜${p.end}`)),
+        el('div', { class: 'today-class-body' },
+          el('div', { class: 'today-class-name' }, isSplit(c) ? unitLabel(u) : c.name),
+          el('div', { class: 'small muted' },
+            [c.room, no > 0 ? `第${no}回` : null, state_ === 'now' ? '授業中' : state_ === 'done' ? '終了' : null].filter(Boolean).join(' ・ ')),
+          el('div', { class: `small att-mini ${sum.level}` }, attText(sum), tasks ? el('span', { class: 'tt-badge inline' }, `課題${tasks}`) : null),
+          state_ !== 'later' ? attButtons(termId, u.akey, ds, () => renderAll()) : null),
+        el('button', { type: 'button', class: 'att-sum-arrow link-btn', 'aria-label': '詳細', onclick: () => openClass(info.day, period) }, '›')));
+    });
+  }
+  if (!rows.length) {
+    const next = nextClassDay(now);
+    rows.push(el('div', { class: 'today-empty muted' },
+      noClass ? `今日は授業がありません(${info.dayInfo.label})。` : '今日は授業がありません。',
+      next ? el('div', { class: 'small' }, `次の授業: ${fmtLongDate(next.date)} ${next.first.period}限 ${next.first.c.name}`) : null));
+  }
+  setKids($('#today-classes'), ...rows);
+
+  // 締切が近い課題(48時間以内・期限切れ)
+  const t = now.getTime();
+  const soon = state.tasks.filter((x) => !x.done && x.end - t <= 2 * DAY).sort((a, b) => a.end - b.end);
+  const restCount = state.tasks.filter((x) => !x.done).length - soon.length;
+  setKids($('#today-tasks'), ...(soon.length
+    ? soon.map((x) => renderTask(x, t))
+    : [el('li', { class: 'today-empty muted' }, '48時間以内に締切の課題はありません。',
+      restCount ? el('div', { class: 'small' }, `ほかに未完了の課題が${restCount}件あります。`) : null)]));
+
+  // 取り込み忘れ
+  const stale = $('#stale');
+  const ts = $('#today-stale');
+  ts.hidden = stale.hidden;
+  ts.textContent = stale.textContent;
+}
+
 /* ---------- 画面の切り替え ---------- */
 
 const TAB_KEY = 'manabaPwa.tab';
 let currentView = 'tasks';
 try { currentView = localStorage.getItem(TAB_KEY) || 'tasks'; } catch { /* ignore */ }
 
+const VIEWS = { today: '今日', tasks: '未提出課題', timetable: '時間割' };
+
 function showView(view) {
-  currentView = view === 'timetable' ? 'timetable' : 'tasks';
+  currentView = VIEWS[view] ? view : 'today';
   try { localStorage.setItem(TAB_KEY, currentView); } catch { /* ignore */ }
-  $('#view-tasks').hidden = currentView !== 'tasks';
-  $('#view-timetable').hidden = currentView !== 'timetable';
+  for (const v of Object.keys(VIEWS)) $(`#view-${v}`).hidden = currentView !== v;
   // 時間割画面では ① で manaba のコース一覧(曜日表示)を開く
   $('#btn-open-manaba').href = manabaUrl(currentView === 'timetable' ? MANABA_COURSE_URL : MANABA_TODO_URL);
-  $('#page-title').textContent = currentView === 'tasks' ? '未提出課題' : '時間割';
+  $('#page-title').textContent = VIEWS[currentView];
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.view === currentView));
   renderAll();
   window.scrollTo(0, 0);
 }
 
 document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => showView(b.dataset.goto)));
 
 function renderAll() {
   syncTerm(state); // 開いたまま学期をまたいだときも切り替える
   render();
   renderTimetable();
+  renderToday();
   const urgent = state.tasks.filter((t) => !t.done && urgency(t.end, Date.now()) === 'urgent').length;
   const badge = $('#tab-badge');
   badge.hidden = !urgent;
@@ -1249,7 +1348,8 @@ $('#btn-import').addEventListener('click', quickImport);
 
 $('#btn-add').addEventListener('click', openAdd);
 
-showView(currentView);
+// アプリを開いたら、いつも「今日」から(#tasks / #timetable で直接開くこともできる)
+showView(({ '#tasks': 'tasks', '#timetable': 'timetable' })[location.hash] || 'today');
 checkHashImport();
 window.addEventListener('hashchange', checkHashImport);
 setInterval(renderAll, 60 * 1000);
