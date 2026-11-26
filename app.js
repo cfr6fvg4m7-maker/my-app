@@ -167,9 +167,26 @@ function render() {
   $('#summary').textContent = open.length
     ? `未完了 ${open.length}件` + (urgent ? ` ・ 24時間以内 ${urgent}件` : '')
     : '';
+  renderStale(now);
   $('#last-import').textContent = state.lastImportAt
     ? `最終取り込み: ${fmtDue(state.lastImportAt)}`
     : '';
+}
+
+// 取り込み忘れのお知らせ(最後の取り込みから1日以上)
+const STALE_AFTER = DAY;
+function renderStale(now) {
+  const box = $('#stale');
+  if (!state.lastImportAt) {
+    box.textContent = 'まだmanabaから取り込んでいません。manabaの未提出課題一覧で「manaba取込」を実行してから、上のボタンを押してください。';
+    box.hidden = false;
+    return;
+  }
+  const diff = now - state.lastImportAt;
+  if (diff < STALE_AFTER) { box.hidden = true; return; }
+  const days = Math.floor(diff / DAY);
+  box.textContent = `最後の取り込みから${days}日たっています。新しい課題が出ていないか、manabaで「manaba取込」を実行して取り込みましょう。`;
+  box.hidden = false;
 }
 
 /* ---------- 操作 ---------- */
@@ -568,7 +585,31 @@ function renderAll() {
 
 /* ---------- 起動 ---------- */
 
-$('#btn-import').addEventListener('click', () => openImport());
+// 1タップ取り込み: クリップボードを読んで、manabaのデータならそのまま取り込む。
+// 読めない・manabaのデータでないときは、従来の取り込み画面を開く。
+async function quickImport() {
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    openImport();
+    return;
+  }
+  let parsed;
+  try {
+    parsed = parseImport(text);
+  } catch {
+    openImport(text);
+    return;
+  }
+  const p = planMerge(parsed.items);
+  applyMerge(parsed.items);
+  const parts = [`新規${p.added}件`, `更新${p.updated}件`];
+  if (p.missing) parts.push(`一覧から消えた${p.missing}件`);
+  toast(`取り込みました(${parts.join('・')})`);
+}
+
+$('#btn-import').addEventListener('click', quickImport);
 $('#btn-add').addEventListener('click', openAdd);
 
 showView(currentView);

@@ -22,6 +22,7 @@
   </header>
 
   <main id="view-tasks">
+    <div id="stale" class="stale" hidden></div>
     <p id="summary" class="summary"></p>
     <ul id="list-open" class="task-list"></ul>
     <p id="empty" class="empty" hidden>
@@ -64,7 +65,7 @@
       <ol class="small steps">
         <li>manabaの未提出課題一覧ページでブックマークレットを実行</li>
         <li>表示された「コピー」ボタンを押す</li>
-        <li>ここに戻って「貼り付け」を押す</li>
+        <li>アプリで「manabaから取り込む」を押す(自動で読めなかったときはこの画面が出ます)</li>
       </ol>
       <button type="button" id="btn-paste" class="btn primary wide">クリップボードから貼り付け</button>
       <textarea id="import-text" rows="4" placeholder="うまくいかないときは、ここに長押しで貼り付けてください"></textarea>
