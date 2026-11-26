@@ -1,6 +1,6 @@
 // オフラインでも開けるようにするための Service Worker。
 // アプリのファイルを変更したら CACHE の番号を上げる(例: v2 → v3)。
-const CACHE = 'manaba-pwa-v5';
+const CACHE = 'manaba-pwa-v6';
 const ASSETS = [
   './',
   'index.html',
@@ -9,7 +9,6 @@ const ASSETS = [
   'manifest.webmanifest',
   'bookmarklet.html',
   'bookmarklet.js',
-  'shortcut.html',
   'icons/apple-touch-icon.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
