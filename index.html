@@ -17,7 +17,8 @@
   <header class="topbar">
     <h1 id="page-title">未提出課題</h1>
     <div class="topbar-actions">
-      <button id="btn-import" class="btn primary">manabaから取り込む</button>
+      <button id="btn-open-manaba" class="btn">① manabaを開く</button>
+      <button id="btn-import" class="btn primary">② 取り込む</button>
     </div>
   </header>
 
@@ -27,7 +28,7 @@
     <ul id="list-open" class="task-list"></ul>
     <p id="empty" class="empty" hidden>
       課題はありません。<br>
-      「manabaから取り込む」か、下の「＋ 手動で追加」から登録できます。
+      「① manabaを開く」→「② 取り込む」か、下の「＋ 手動で追加」から登録できます。
     </p>
 
     <details id="done-section" class="done-section" hidden>
@@ -38,6 +39,7 @@
     <section class="tools">
       <button id="btn-add" class="btn">＋ 手動で追加</button>
       <a class="btn link" href="bookmarklet.html">ブックマークレットの設定</a>
+      <a class="btn link" id="link-manaba-plain" target="_blank" rel="noopener">manabaが開かないとき</a>
     </section>
     <p id="last-import" class="muted small"></p>
   </main>
@@ -65,7 +67,7 @@
       <ol class="small steps">
         <li>manabaの未提出課題一覧ページでブックマークレットを実行</li>
         <li>表示された「コピー」ボタンを押す</li>
-        <li>アプリで「manabaから取り込む」を押す(自動で読めなかったときはこの画面が出ます)</li>
+        <li>アプリで「② 取り込む」を押す(自動で読めなかったときはこの画面が出ます)</li>
       </ol>
       <button type="button" id="btn-paste" class="btn primary wide">クリップボードから貼り付け</button>
       <textarea id="import-text" rows="4" placeholder="うまくいかないときは、ここに長押しで貼り付けてください"></textarea>

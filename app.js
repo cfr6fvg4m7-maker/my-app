@@ -178,14 +178,14 @@ const STALE_AFTER = DAY;
 function renderStale(now) {
   const box = $('#stale');
   if (!state.lastImportAt) {
-    box.textContent = 'まだmanabaから取り込んでいません。manabaの未提出課題一覧で「manaba取込」を実行してから、上のボタンを押してください。';
+    box.textContent = 'まだmanabaから取り込んでいません。上の「① manabaを開く」から、manabaで「manaba取込」→「コピー」をして、「② 取り込む」を押してください。';
     box.hidden = false;
     return;
   }
   const diff = now - state.lastImportAt;
   if (diff < STALE_AFTER) { box.hidden = true; return; }
   const days = Math.floor(diff / DAY);
-  box.textContent = `最後の取り込みから${days}日たっています。新しい課題が出ていないか、manabaで「manaba取込」を実行して取り込みましょう。`;
+  box.textContent = `最後の取り込みから${days}日たっています。「① manabaを開く」から新しい課題が出ていないか確認して、取り込みましょう。`;
   box.hidden = false;
 }
 
@@ -610,6 +610,18 @@ async function quickImport() {
 }
 
 $('#btn-import').addEventListener('click', quickImport);
+
+// manaba の未提出課題一覧を Safari アプリで開く。
+// ホーム画面アプリ内のブラウザではブックマーク(manaba取込)が使えないため、
+// iOS の x-safari-https: で Safari 本体に渡す。
+const MANABA_TODO_URL = 'https://bunkyo-u.manaba.jp/ct/home_library_query';
+$('#link-manaba-plain').href = MANABA_TODO_URL;
+$('#btn-open-manaba').addEventListener('click', () => {
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) location.href = 'x-safari-' + MANABA_TODO_URL;
+  else window.open(MANABA_TODO_URL, '_blank', 'noopener');
+});
 $('#btn-add').addEventListener('click', openAdd);
 
 showView(currentView);
