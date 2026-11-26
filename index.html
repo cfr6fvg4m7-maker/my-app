@@ -45,7 +45,10 @@
         <button type="button" data-when="today" class="when-btn">今日</button>
         <button type="button" data-when="tomorrow" class="when-btn on">明日</button>
         <button type="button" data-when="weekend" class="when-btn">今週末</button>
-        <input type="date" name="date" class="when-date" aria-label="日付を選ぶ">
+        <label class="when-btn when-pick">
+          <span id="when-pick-label">📅 日付を選ぶ</span>
+          <input type="date" name="date" aria-label="日付を選ぶ">
+        </label>
         <button type="submit" class="btn primary">追加</button>
       </div>
     </form>

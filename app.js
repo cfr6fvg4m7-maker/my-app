@@ -1396,11 +1396,13 @@ function quickDate(when, now = new Date()) {
 
 function renderQuickWhen() {
   const f = $('#quick-todo');
-  f.querySelectorAll('.when-btn').forEach((b) => b.classList.toggle('on', b.dataset.when === quickWhen));
-  f.date.classList.toggle('on', quickWhen === 'date');
+  f.querySelectorAll('.when-btn[data-when]').forEach((b) => b.classList.toggle('on', b.dataset.when === quickWhen));
+  const picked = quickWhen === 'date' && f.date.value;
+  f.querySelector('.when-pick').classList.toggle('on', Boolean(picked));
+  $('#when-pick-label').textContent = picked ? `📅 ${fmtDay(f.date.value)}` : '📅 日付を選ぶ';
 }
 
-$('#quick-todo').querySelectorAll('.when-btn').forEach((b) => b.addEventListener('click', () => {
+$('#quick-todo').querySelectorAll('.when-btn[data-when]').forEach((b) => b.addEventListener('click', () => {
   quickWhen = b.dataset.when;
   $('#quick-todo').date.value = '';
   renderQuickWhen();
