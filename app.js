@@ -1652,12 +1652,13 @@ function renderTaskCalendar(open, now) {
     const info = byDay.get(ds) || { tasks: [], exams: [] };
     const dayInfo = calDayInfo(date);
     const off = dayInfo && dayInfo.type === 'off' && date.getDay() !== 0;
+    const examPeriod = dayInfo && dayInfo.type === 'exam';
     // その日の中で一番急ぎの色
     const levels = info.tasks.map((t) => urgency(t.end, now));
     const level = levels.includes('overdue') || levels.includes('urgent') ? 'urgent' : levels.includes('soon') ? 'soon' : '';
     cells.push(el('button', {
       type: 'button',
-      class: ['cal-day', ds === today ? 'today' : '', ds === calSelected ? 'sel' : '', off ? 'off' : '',
+      class: ['cal-day', ds === today ? 'today' : '', ds === calSelected ? 'sel' : '', off ? 'off' : '', examPeriod ? 'exam-period' : '',
         date.getDay() === 0 ? 'sun' : date.getDay() === 6 ? 'sat' : ''].filter(Boolean).join(' '),
       'aria-label': `${m + 1}月${d}日 ${info.tasks.length}件${info.exams.length ? ' 試験あり' : ''}`,
       onclick: () => { calSelected = ds; render(); },
@@ -1681,6 +1682,10 @@ function renderTaskCalendar(open, now) {
         onclick: () => { const d = new Date(now); calMonth = new Date(d.getFullYear(), d.getMonth(), 1); calSelected = today; render(); },
       }, '今日')),
     el('div', { class: 'cal-grid' }, ...cells),
+    el('div', { class: 'cal-legend small muted' },
+      el('span', {}, el('i', { class: 'sw exam-period' }), '定期試験期間'),
+      el('span', {}, el('i', { class: 'sw off' }), '授業なし'),
+      el('span', {}, el('b', { class: 'cal-exam-key' }, '試'), '試験の予定')),
     el('div', { class: 'cal-sel-head' },
       el('b', {}, `${fmtLongDate(selDate)}`),
       selInfo && selInfo.label ? el('span', { class: 'small muted' }, ` ${selInfo.type === 'class' ? selInfo.label : `授業なし(${selInfo.label})`}`) : null,

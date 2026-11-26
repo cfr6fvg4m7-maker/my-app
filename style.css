@@ -433,3 +433,16 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .cal-sel-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .cal-sel-head .link-btn { margin-left: auto; }
 .cal-none { margin: 0; }
+
+/* 定期試験期間(カレンダー) */
+:root { --exam-bg: #efe8ff; --exam-bar: #7c4dff; --exam-text: #5b2bd6; }
+@media (prefers-color-scheme: dark) { :root { --exam-bg: #2c2545; --exam-bar: #a585ff; --exam-text: #c9b6ff; } }
+.cal-day.exam-period { background: var(--exam-bg); border-color: var(--exam-bar); }
+.cal-day.exam-period .cal-num { color: var(--exam-text); }
+.cal-day.exam-period.today .cal-num { color: #fff; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.cal-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.cal-legend .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--border); }
+.cal-legend .sw.exam-period { background: var(--exam-bg); border-color: var(--exam-bar); }
+.cal-legend .sw.off { background: var(--overdue-bg); }
+.cal-exam-key { color: var(--urgent-text); font-size: 11px; }

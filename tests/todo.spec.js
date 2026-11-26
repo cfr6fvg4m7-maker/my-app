@@ -140,3 +140,12 @@ test('カレンダー表示: 日ごとの件数・試験・休講日と、選ん
   await page.reload();
   await expect(page.locator('#task-cal')).toBeVisible();
 });
+
+test('カレンダー: 定期試験期間の日は色が変わる', async ({ page }) => {
+  await openApp(page, { state: makeState(), hash: 'tasks', time: at(2027, 1, 10, 12) });
+  await page.click('.mode-btn[data-mode=cal]');
+  await expect(page.locator('.cal-head b')).toHaveText('2027年1月');
+  const periodDays = await page.locator('.cal-day.exam-period .cal-num').allInnerTexts();
+  expect(periodDays).toEqual(['20', '21', '22', '23', '24', '25', '26']);
+  await expect(page.locator('.cal-legend')).toContainText('定期試験期間');
+});
