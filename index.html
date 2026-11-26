@@ -25,13 +25,14 @@
   <main id="view-today" hidden>
     <div id="today-head" class="today-head"></div>
     <div id="today-stale" class="stale" hidden></div>
+    <section id="today-exams" class="today-exams" hidden></section>
     <section id="today-pending" class="att-pending" hidden></section>
     <section class="today-sec">
       <h3>今日の授業 <a class="link-btn bnavi-link" target="_blank" rel="noopener">Bナビで教室を確認 ›</a></h3>
       <div id="today-classes"></div>
     </section>
     <section class="today-sec">
-      <h3>締切が近い課題 <button type="button" class="link-btn" data-goto="tasks">すべて見る ›</button></h3>
+      <h3>締切が近い課題・やること <span><button type="button" class="link-btn" data-add-todo>＋ やること</button><button type="button" class="link-btn" data-goto="tasks">すべて見る ›</button></span></h3>
       <ul id="today-tasks" class="task-list"></ul>
     </section>
   </main>
@@ -58,7 +59,8 @@
 
     <section class="tools">
       <button id="btn-backup" class="btn">データのバックアップ</button>
-      <button id="btn-add" class="btn">＋ 手動で追加</button>
+      <button class="btn" data-add-todo>＋ やることを追加</button>
+      <button id="btn-add" class="btn">＋ 課題を手動で追加</button>
       <a class="btn link" href="bookmarklet.html">ブックマークレットの設定</a>
     </section>
     <p id="last-import" class="muted small"></p>
@@ -73,6 +75,7 @@
     <section id="att-pending" class="att-pending" hidden></section>
     <div id="tt-grid" class="tt-grid"></div>
     <p id="tt-credits" class="muted small"></p>
+    <section id="exam-list" class="exam-list"></section>
     <section id="att-summary" class="att-summary"></section>
     <div class="tt-help small">
       <b>manabaから時間割を取り込む</b>
@@ -138,6 +141,7 @@
       <a class="link-btn bnavi-link" target="_blank" rel="noopener">Bナビで教室・授業情報を確認 ›</a>
       <div id="class-att" class="class-att"></div>
       <div id="class-tasks" class="class-tasks"></div>
+      <div id="class-extra" class="class-extra"></div>
       <label>授業名<input name="name" required></label>
       <label>教室(任意)<input name="room"></label>
       <label>先生(任意)<input name="teacher"></label>
@@ -154,6 +158,51 @@
       </details>
       <div class="dlg-actions">
         <button type="button" id="btn-class-clear" class="btn danger">このコマを空にする</button>
+        <span class="spacer"></span>
+        <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+        <button type="submit" value="ok" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- やること -->
+  <dialog id="dlg-todo">
+    <form method="dialog" class="dlg" id="form-todo">
+      <h2>やることを追加</h2>
+      <label>やること<input name="title" required placeholder="例: 小テストの勉強"></label>
+      <label>授業(任意)<select name="course"></select></label>
+      <label>いつまでに<input name="date" type="date" required></label>
+      <label>時刻(任意)<input name="time" type="time"></label>
+      <div class="dlg-actions">
+        <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+        <button type="submit" value="ok" class="btn primary">追加</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 試験の予定 -->
+  <dialog id="dlg-exam">
+    <form method="dialog" class="dlg" id="form-exam">
+      <h2 id="exam-title">試験の予定</h2>
+      <label>授業<select name="course" required></select></label>
+      <label>種類
+        <select name="kind">
+          <option>定期試験</option><option>小テスト</option><option>レポート試験</option><option>中間試験</option><option>その他</option>
+        </select>
+      </label>
+      <label>日付<input name="date" type="date" required></label>
+      <p id="exam-hint" class="small muted"></p>
+      <label>時限
+        <select name="period">
+          <option value="">決まっていない</option>
+          <option value="1">1限 9:10〜10:40</option><option value="2">2限 10:50〜12:20</option>
+          <option value="3">3限 13:10〜14:40</option><option value="4">4限 14:50〜16:20</option>
+          <option value="5">5限 16:30〜18:00</option>
+        </select>
+      </label>
+      <label>メモ(範囲・持ち物・教室など)<textarea name="memo" rows="3"></textarea></label>
+      <div class="dlg-actions">
+        <button type="button" id="btn-exam-del" class="btn danger">削除</button>
         <span class="spacer"></span>
         <button value="cancel" class="btn" formnovalidate>キャンセル</button>
         <button type="submit" value="ok" class="btn primary">保存</button>

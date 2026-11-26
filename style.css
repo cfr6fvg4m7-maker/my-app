@@ -337,3 +337,27 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .term-bar select { flex: 1; min-width: 0; }
 .term-bar .btn { flex: none; padding: 9px 12px; font-size: 14px; }
 .dlg > .bnavi-link { justify-self: start; padding: 0; }
+
+/* ---------- やること・試験 ---------- */
+.badge.todo { color: var(--primary); border-color: var(--primary); }
+.today-sec h3 span { display: flex; gap: 4px; }
+.class-extra { display: grid; gap: 6px; }
+.class-extra-btns { display: flex; gap: 8px; }
+.class-extra-btns .btn { flex: 1; }
+.dlg select { font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; }
+.exam-list { margin: 14px 4px 0; }
+.exam-list h3, .today-exams h3 { font-size: 15px; margin: 0 0 6px; }
+.exam-rows { display: grid; gap: 4px; }
+.today-exams { display: grid; gap: 6px; margin-bottom: 14px; }
+.exam-row {
+  appearance: none; font: inherit; color: var(--text); text-align: left; cursor: pointer; width: 100%;
+  display: flex; gap: 10px; align-items: center; padding: 10px 12px;
+  background: var(--card); border: 1px solid var(--border); border-left: 5px solid var(--border); border-radius: 10px;
+}
+.exam-row.soon { border-left-color: var(--soon-bar); }
+.exam-row.tomorrow { border-left-color: var(--urgent-bar); background: var(--soon-bg); }
+.exam-row.today { border-left-color: var(--urgent-bar); background: var(--urgent-bg); }
+.exam-count { flex: none; width: 3.8em; font-weight: 800; font-size: 14px; }
+.exam-row.today .exam-count, .exam-row.tomorrow .exam-count { color: var(--urgent-text); }
+.exam-body { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; }
+.exam-when { width: 100%; }

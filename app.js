@@ -82,7 +82,7 @@ function ttClasses() {
 
 function emptyState() {
   // 将来ここに attendance などを追加していく
-  const s = { version: SCHEMA_VERSION, tasks: [], lastImportAt: null, timetable: defaultTimetable() };
+  const s = { version: SCHEMA_VERSION, tasks: [], exams: [], lastImportAt: null, timetable: defaultTimetable() };
   syncTerm(s);
   return s;
 }
@@ -111,6 +111,7 @@ function migrate(s) {
   }
   delete s.timetable.classes;
   if (!s.timetable.rules) s.timetable.rules = { sessions: 15, failRatio: 1 / 3, lateCount: 1 };
+  if (!Array.isArray(s.exams)) s.exams = []; // 試験の予定 [{ id, course, kind, date, period, memo }]
   // バージョンが上がったらここで変換処理を追加する
   s.version = SCHEMA_VERSION;
   syncTerm(s);
@@ -189,6 +190,11 @@ function setKids(node, ...kids) {
   node.replaceChildren(...kids.filter((k) => k != null && k !== false));
 }
 
+// 時刻なしの「やること」は日付だけ表示
+function fmtTaskDue(t) {
+  return t.allDay ? fmtDue(t.end).replace(/ \d\d:\d\d$/, '') : fmtDue(t.end);
+}
+
 function renderTask(t, now) {
   const u = t.done ? '' : urgency(t.end, now);
   const titleNode = t.url
@@ -198,6 +204,7 @@ function renderTask(t, now) {
   const badges = [];
   if (t.type) badges.push(el('span', { class: 'badge' }, t.type));
   if (t.source === 'manual') badges.push(el('span', { class: 'badge' }, '手動'));
+  if (t.source === 'todo') badges.push(el('span', { class: 'badge todo' }, 'やること'));
   if (t.missing && !t.done) badges.push(el('span', { class: 'badge warn' }, 'manabaの一覧にありません(提出済み?)'));
 
   return el('li', { class: `task ${u} ${t.done ? 'done' : ''}` },
@@ -210,7 +217,7 @@ function renderTask(t, now) {
       titleNode,
       t.course ? el('div', { class: 'meta' }, t.course) : null,
       el('div', { class: 'due' },
-        '締切 ', fmtDue(t.end),
+        t.source === 'todo' ? 'いつまで ' : '締切 ', fmtTaskDue(t),
         t.done ? null : el('span', { class: 'remain' }, fmtRemain(t.end, now)),
       ),
     ),
@@ -510,7 +517,7 @@ function tasksForClass(c) {
   if (!c) return [];
   const names = classCourseNames(c);
   return state.tasks
-    .filter((t) => !t.done && t.course && (names.length ? names.includes(t.course) : t.course.includes(c.name)))
+    .filter((t) => !t.done && t.course && (t.course === c.name || (names.length ? names.includes(t.course) : t.course.includes(c.name))))
     .sort((a, b) => a.end - b.end);
 }
 
@@ -698,6 +705,7 @@ function renderTimetable() {
   const allTotal = Object.values(tt.terms).reduce((a, t) => a + sumCredits(Object.values(t.classes)), 0);
   renderAttSummary();
   renderPending();
+  renderExamList();
   $('#tt-credits').textContent = allTotal
     ? `この学期の単位: ${termTotal}単位 ・ 全学期の合計: ${allTotal}単位`
     : '';
@@ -731,10 +739,10 @@ function openClass(day, period) {
   const tasks = tasksForClass(c);
   const now = Date.now();
   setKids($('#class-tasks'), ...(tasks.length ? [
-    el('div', { class: 'small muted' }, 'この授業の未完了の課題'),
+    el('div', { class: 'small muted' }, 'この授業の未完了の課題・やること'),
     ...tasks.map((t) => el('div', { class: `class-task ${urgency(t.end, now)}` },
       t.url ? el('a', { href: t.url, target: '_blank', rel: 'noopener' }, t.title) : el('span', {}, t.title),
-      el('span', { class: 'small' }, ` ${fmtDue(t.end)} ${fmtRemain(t.end, now)}`))),
+      el('span', { class: 'small' }, ` ${fmtTaskDue(t)} ${fmtRemain(t.end, now)}`))),
   ] : []));
   const links = c && Array.isArray(c.courses) ? c.courses.filter((x) => x.url) : [];
   if (links.length) {
@@ -743,8 +751,9 @@ function openClass(day, period) {
   }
   // manabaから取り込んだコマはコース名が決まっているので入力欄を隠す
   $('#form-class').course.closest('label').hidden = Boolean(c && c.courses && c.courses.length);
+  renderClassExtra(c);
   $('#btn-class-clear').hidden = !c;
-  $('#dlg-class').showModal();
+  if (!$('#dlg-class').open) $('#dlg-class').showModal();
 }
 
 $('#form-class').addEventListener('submit', (ev) => {
@@ -1227,6 +1236,8 @@ function renderToday() {
     el('div', { class: 'today-date' }, fmtLongDate(now)),
     el('div', { class: 'small muted' }, termLabel(termId), dayLabel ? ` ・ ${dayLabel}` : ''));
 
+  renderTodayExams(now);
+
   // 記録し忘れ(今日の授業は下の「今日の授業」で記録するので除く)
   fillPending($('#today-pending'), pendingAttendance(now).filter((x) => x.date !== ds));
 
@@ -1278,6 +1289,195 @@ function renderToday() {
   const ts = $('#today-stale');
   ts.hidden = stale.hidden;
   ts.textContent = stale.textContent;
+}
+
+/* ---------- やること・試験 ---------- */
+
+// 授業の選択肢(今の学期の時間割から。前半・後半のコマは授業ごと)
+function classOptions(termId = state.timetable.currentTerm) {
+  const term = state.timetable.terms[termId];
+  if (!term) return [];
+  const keys = Object.keys(term.classes).sort((a, b) => {
+    const [d1, p1] = a.split('-').map(Number);
+    const [d2, p2] = b.split('-').map(Number);
+    return d1 - d2 || p1 - p2;
+  });
+  const seen = new Set();
+  const out = [];
+  for (const key of keys) {
+    const c = term.classes[key];
+    for (const u of slotUnits(termId, key, c)) {
+      const value = isSplit(c) || (c.courses && c.courses.length) ? u.name : (c.course || c.name);
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push({ value, label: `${WD[u.day]}${u.period} ${unitLabel(u)}` });
+    }
+  }
+  return out;
+}
+
+function fillCourseSelect(sel, selected, allowEmpty) {
+  const opts = classOptions();
+  if (selected && !opts.some((o) => o.value === selected)) opts.unshift({ value: selected, label: selected });
+  setKids(sel,
+    allowEmpty ? el('option', { value: '' }, '(なし)') : null,
+    ...opts.map((o) => el('option', { value: o.value, selected: o.value === selected }, o.label)));
+}
+
+// --- やること ---
+function openTodo(course = '') {
+  const f = $('#form-todo');
+  f.reset();
+  fillCourseSelect(f.course, course, true);
+  f.date.value = dateStr(new Date(Date.now() + DAY));
+  $('#dlg-todo').showModal();
+}
+
+$('#form-todo').addEventListener('submit', (ev) => {
+  if (ev.submitter && ev.submitter.value !== 'ok') return;
+  const f = ev.target;
+  const title = f.title.value.trim();
+  if (!title || !f.date.value) return;
+  const [y, m, d] = f.date.value.split('-').map(Number);
+  const [hh, mm] = f.time.value ? f.time.value.split(':').map(Number) : [23, 59];
+  state.tasks.push({
+    id: 'td:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    source: 'todo', type: '', title, course: f.course.value, url: '',
+    start: null, end: new Date(y, m - 1, d, hh, mm).getTime(), allDay: !f.time.value,
+    done: false, doneAt: null, missing: false, addedAt: Date.now(),
+  });
+  saveState();
+  renderAll();
+  if ($('#dlg-class').open && editingSlot) openClass(editingSlot.day, editingSlot.period);
+  toast('やることを追加しました');
+});
+
+document.querySelectorAll('[data-add-todo]').forEach((b) => b.addEventListener('click', () => openTodo()));
+
+// --- 試験 ---
+const EXAM_KINDS = ['定期試験', '小テスト', 'レポート試験', '中間試験', 'その他'];
+let editingExamId = null;
+
+function daysUntil(ds, now = new Date()) {
+  return Math.round((parseYmd(ds) - parseYmd(dateStr(now))) / DAY);
+}
+
+function examWhen(x) {
+  const p = x.period ? state.timetable.periods[x.period - 1] : null;
+  return `${fmtDay(x.date)}${x.period ? ` ${x.period}限` : ''}${p ? `(${p.start}〜)` : ''}`;
+}
+
+function examsForClass(c) {
+  if (!c) return [];
+  const names = new Set([c.name, c.course, ...classCourseNames(c)].filter(Boolean));
+  return state.exams.filter((x) => names.has(x.course)).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function upcomingExams(now = new Date()) {
+  const today = dateStr(now);
+  return state.exams.filter((x) => x.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.period || 9) - (b.period || 9));
+}
+
+function openExam(id = null, course = '') {
+  editingExamId = id;
+  const x = id ? state.exams.find((e) => e.id === id) : null;
+  const f = $('#form-exam');
+  f.reset();
+  fillCourseSelect(f.course, x ? x.course : course, false);
+  const cal = ACADEMIC_CALENDAR[state.timetable.currentTerm];
+  const today = dateStr(new Date());
+  $('#exam-hint').textContent = cal && cal.exam ? `定期試験期間: ${fmtDay(cal.exam.start)}〜${fmtDay(cal.exam.end)}` : '';
+  if (x) {
+    f.kind.value = x.kind;
+    f.date.value = x.date;
+    f.period.value = x.period || '';
+    f.memo.value = x.memo || '';
+  } else {
+    f.date.value = cal && cal.exam && cal.exam.start >= today ? cal.exam.start : today;
+  }
+  // 定期試験を選んだら、日付を試験期間の初日に合わせる(まだ変えていなければ)
+  f.kind.onchange = () => {
+    if (!x && f.kind.value === '定期試験' && cal && cal.exam && f.date.value < cal.exam.start) f.date.value = cal.exam.start;
+  };
+  $('#exam-title').textContent = x ? '試験の予定を編集' : '試験の予定を追加';
+  $('#btn-exam-del').hidden = !x;
+  $('#dlg-exam').showModal();
+}
+
+$('#form-exam').addEventListener('submit', (ev) => {
+  if (ev.submitter && ev.submitter.value !== 'ok') return;
+  const f = ev.target;
+  if (!f.course.value || !f.date.value) return;
+  const data = {
+    course: f.course.value, kind: f.kind.value, date: f.date.value,
+    period: f.period.value ? Number(f.period.value) : null, memo: f.memo.value.trim(),
+  };
+  const x = editingExamId && state.exams.find((e) => e.id === editingExamId);
+  if (x) Object.assign(x, data);
+  else state.exams.push({ id: 'ex:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...data });
+  saveState();
+  renderAll();
+  if ($('#dlg-class').open && editingSlot) openClass(editingSlot.day, editingSlot.period);
+  toast('試験の予定を保存しました');
+});
+
+$('#btn-exam-del').addEventListener('click', () => {
+  const x = state.exams.find((e) => e.id === editingExamId);
+  if (!x || !confirm(`${x.course} の${x.kind}(${examWhen(x)})を削除しますか?`)) return;
+  state.exams = state.exams.filter((e) => e.id !== x.id);
+  saveState();
+  renderAll();
+  $('#dlg-exam').close();
+  if ($('#dlg-class').open && editingSlot) openClass(editingSlot.day, editingSlot.period);
+});
+
+function examRow(x, now = new Date()) {
+  const n = daysUntil(x.date, now);
+  const level = n <= 0 ? 'today' : n === 1 ? 'tomorrow' : n <= 7 ? 'soon' : '';
+  return el('button', { type: 'button', class: `exam-row ${level}`, onclick: () => openExam(x.id) },
+    el('span', { class: 'exam-count' }, n < 0 ? '終了' : n === 0 ? '今日' : n === 1 ? '明日' : `あと${n}日`),
+    el('span', { class: 'exam-body' },
+      el('b', {}, x.course), el('span', { class: 'small' }, ` ${x.kind}`),
+      el('span', { class: 'small muted exam-when' }, examWhen(x) + (x.memo ? ` ・ ${x.memo}` : ''))));
+}
+
+// 時間割画面の下: 試験の予定
+function renderExamList() {
+  const up = upcomingExams();
+  setKids($('#exam-list'),
+    el('h3', {}, '試験の予定 ', el('button', { type: 'button', class: 'link-btn', onclick: () => openExam() }, '＋ 追加')),
+    up.length ? el('div', { class: 'exam-rows' }, ...up.map((x) => examRow(x)))
+      : el('p', { class: 'small muted' }, 'まだ登録されていません。コマを押した画面や「＋ 追加」から登録できます。'));
+}
+
+// 今日画面: 今日の試験と、30日以内の試験のカウントダウン
+function renderTodayExams(now = new Date()) {
+  const box = $('#today-exams');
+  const up = upcomingExams(now).filter((x) => daysUntil(x.date, now) <= 30);
+  if (!up.length) { box.hidden = true; setKids(box); return; }
+  box.hidden = false;
+  const today = up.filter((x) => daysUntil(x.date, now) === 0);
+  const later = up.filter((x) => daysUntil(x.date, now) > 0).slice(0, 4);
+  setKids(box,
+    today.length ? el('h3', {}, '今日の試験') : null,
+    ...today.map((x) => examRow(x, now)),
+    later.length ? el('h3', {}, 'もうすぐ試験') : null,
+    ...later.map((x) => examRow(x, now)));
+}
+
+// コマの画面: この授業のやること・試験
+function renderClassExtra(c) {
+  const box = $('#class-extra');
+  if (!c) { setKids(box); return; }
+  const exams = examsForClass(c).filter((x) => x.date >= dateStr(new Date()));
+  const course = isSplit(c) ? '' : (c.courses && c.courses.length ? c.courses[0].name : (c.course || c.name));
+  setKids(box,
+    exams.length ? el('div', { class: 'small muted' }, 'この授業の試験') : null,
+    ...exams.map((x) => examRow(x)),
+    el('div', { class: 'class-extra-btns' },
+      el('button', { type: 'button', class: 'btn small-btn', onclick: () => openTodo(course) }, '＋ やること'),
+      el('button', { type: 'button', class: 'btn small-btn', onclick: () => openExam(null, course) }, '＋ 試験の予定')));
 }
 
 /* ---------- 画面の切り替え ---------- */
