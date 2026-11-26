@@ -160,6 +160,7 @@ function render() {
   $('#list-done').replaceChildren(...done.map((t) => renderTask(t, now)));
 
   $('#empty').hidden = open.length > 0;
+  $('#legend').hidden = open.length === 0;
   $('#done-section').hidden = done.length === 0;
   $('#done-count').textContent = `(${done.length})`;
 
