@@ -57,6 +57,7 @@
     <div id="tt-now" class="tt-now"></div>
     <div id="tt-grid" class="tt-grid"></div>
     <p id="tt-credits" class="muted small"></p>
+    <section id="att-summary" class="att-summary"></section>
     <div class="tt-help small">
       <b>manabaから時間割を取り込む</b>
       <ol>
@@ -136,6 +137,26 @@
         <span class="spacer"></span>
         <button value="cancel" class="btn" formnovalidate>キャンセル</button>
         <button type="submit" value="ok" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 出席の記録(授業ごと) -->
+  <dialog id="dlg-att">
+    <form method="dialog" class="dlg">
+      <h2 id="att-title"></h2>
+      <div id="att-stat" class="att-head"></div>
+      <div id="att-filter" class="att-filter"></div>
+      <ul id="att-list" class="att-list"></ul>
+      <div class="att-add">
+        <div class="small muted">記録を追加(日付を選んでボタンを押す)</div>
+        <div class="att-row">
+          <input type="date" id="att-add-date" class="att-date">
+          <div id="att-add-buttons"></div>
+        </div>
+      </div>
+      <div class="dlg-actions">
+        <button value="cancel" class="btn">閉じる</button>
       </div>
     </form>
   </dialog>

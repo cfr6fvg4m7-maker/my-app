@@ -263,3 +263,35 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .rules { display: grid; gap: 8px; }
 .rules[open] { gap: 8px; }
 .file-btn { cursor: pointer; }
+
+/* ---------- 出席の記録一覧 ---------- */
+.small-btn { font-size: 14px; padding: 8px; }
+.att-summary { margin: 14px 4px 0; }
+.att-summary h3 { font-size: 15px; margin: 0 0 6px; }
+.att-sum-list { display: grid; gap: 4px; }
+.att-sum-row {
+  appearance: none; font: inherit; color: var(--text); cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 10px;
+}
+.att-sum-row.warn { border-left-color: var(--soon-bar); }
+.att-sum-row.danger, .att-sum-row.over { border-left-color: var(--urgent-bar); }
+.att-sum-slot { flex: none; font-size: 12px; color: var(--muted); width: 2.4em; }
+.att-sum-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-sum-count { flex: none; font-size: 13px; font-weight: 700; color: var(--muted); }
+.att-sum-row.warn .att-sum-count { color: var(--warn); }
+.att-sum-row.danger .att-sum-count, .att-sum-row.over .att-sum-count { color: var(--urgent-text); }
+.att-sum-arrow { flex: none; color: var(--muted); font-size: 18px; }
+.att-filter { display: flex; gap: 6px; flex-wrap: wrap; }
+.att-tab {
+  appearance: none; font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+}
+.att-tab.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.att-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 45vh; overflow-y: auto; }
+.att-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg); }
+.att-day { flex: none; width: 5.2em; font-size: 14px; font-weight: 600; }
+.att-item .att-btn { padding: 5px 9px; font-size: 13px; }
+.att-trash { appearance: none; border: none; background: none; font-size: 16px; margin-left: auto; cursor: pointer; padding: 4px; }
+.att-empty { padding: 8px; }
+.att-add { display: grid; gap: 4px; border-top: 1px solid var(--border); padding-top: 8px; }
