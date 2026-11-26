@@ -437,12 +437,33 @@ function calTargets(onlyNew) {
     .sort((a, b) => a.end - b.end);
 }
 
-function sendToShortcut(onlyNew) {
+// クリップボードへコピー(ショートカット側は「クリップボードを取得」で受け取る)
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = el('textarea', { readonly: true, style: 'position:fixed;top:0;left:0;opacity:0' });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+async function sendToShortcut(onlyNew) {
   const tasks = calTargets(onlyNew);
   if (!tasks.length) { toast('カレンダーに送る課題はありません'); return; }
   const text = tasks
     .map((t) => `【締切】${t.title.replace(/[|\r\n]/g, ' ')}|${fmtShortcutDate(t.end)}`)
     .join('\n');
+  if (!(await copyText(text))) {
+    toast('コピーできませんでした。もう一度押してください');
+    return;
+  }
   for (const t of tasks) t.calSentEnd = t.end;
   saveState();
   $('#dlg-ics').close();

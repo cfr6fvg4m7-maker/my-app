@@ -1,6 +1,6 @@
 // オフラインでも開けるようにするための Service Worker。
 // アプリのファイルを変更したら CACHE の番号を上げる(例: v2 → v3)。
-const CACHE = 'manaba-pwa-v4';
+const CACHE = 'manaba-pwa-v5';
 const ASSETS = [
   './',
   'index.html',
