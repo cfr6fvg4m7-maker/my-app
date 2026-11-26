@@ -332,3 +332,8 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .today-class .att-btn { padding: 5px 10px; font-size: 13px; }
 .tt-badge.inline { margin-left: 6px; font-size: 10px; padding: 0 5px; vertical-align: 1px; }
 .today-empty { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; list-style: none; }
+
+.term-bar { display: flex; gap: 8px; align-items: center; }
+.term-bar select { flex: 1; min-width: 0; }
+.term-bar .btn { flex: none; padding: 9px 12px; font-size: 14px; }
+.dlg > .bnavi-link { justify-self: start; padding: 0; }

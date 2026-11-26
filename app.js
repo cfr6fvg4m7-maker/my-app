@@ -791,6 +791,10 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function manabaUrl(url) { return isIOS ? 'x-safari-' + url : url; }
 
+// Bナビ(教室などの確認用)。manaba と同じく Safari で開く
+const BNAVI_URL = 'https://portal.bunkyo.ac.jp/campusweb/portal.do?page=main';
+document.querySelectorAll('.bnavi-link').forEach((a) => { a.href = manabaUrl(BNAVI_URL); });
+
 /* ---------- 出席 ---------- */
 
 const ATT_LABEL = { present: '出席', late: '遅刻', absent: '欠席' };
