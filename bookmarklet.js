@@ -134,13 +134,65 @@
     };
   }
 
+  // ---- Bナビ: MYスケジュール(選んだ日の「1限: 授業名 @教室」)----
+  // 1回に1日分しか出ないので、読んだ曜日をこのサイトの localStorage に貯めて、まとめてコピーする
+  var ROOMS_KEY = 'manaba-pwa-rooms';
+
+  function pageLines() {
+    var texts = [document.body ? document.body.innerText : ''];
+    for (var i = 0; i < window.frames.length; i++) {
+      try { texts.push(window.frames[i].document.body.innerText); } catch (e) { /* 別サイトの枠は読めない */ }
+    }
+    return texts.join('\n').split(/\n+/).map(clean);
+  }
+
+  function readRoomsOfPage() {
+    var lines = pageLines();
+    var date = null;
+    var days = {};
+    for (var i = 0; i < lines.length; i++) {
+      var d = lines[i].match(/^(\d{4})年(\d{1,2})月(\d{1,2})日/);
+      if (d) { date = d[1] + '-' + ('0' + d[2]).slice(-2) + '-' + ('0' + d[3]).slice(-2); continue; }
+      var m = lines[i].match(/^(\d)\s*限\s*[:：]\s*(.+?)\s*[@＠]\s*(.+)$/);
+      if (m && date) {
+        if (!days[date]) days[date] = [];
+        days[date].push({ period: Number(m[1]), name: m[2], room: m[3] });
+      }
+    }
+    return days;
+  }
+
+  function readRooms(found) {
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(ROOMS_KEY) || '{}'); } catch (e) { saved = {}; }
+    // 曜日ごとに最新の日だけ残す
+    for (var ds in found) {
+      var wd = new Date(Number(ds.slice(0, 4)), Number(ds.slice(5, 7)) - 1, Number(ds.slice(8, 10))).getDay();
+      saved[wd] = { date: ds, entries: found[ds] };
+    }
+    try { localStorage.setItem(ROOMS_KEY, JSON.stringify(saved)); } catch (e) { /* 保存できなくても今回分は渡す */ }
+    var days = [];
+    var names = [];
+    for (var w = 1; w <= 6; w++) {
+      if (saved[w]) { days.push(saved[w]); names.push(DAY_NAMES[w]); }
+    }
+    return {
+      data: { app: 'manaba-pwa', v: 1, kind: 'rooms', at: new Date().toISOString(), days: days },
+      message: '教室を読み取りました(' + names.join('・') + '曜)',
+      note: '授業がある曜日の日付をカレンダーで押して、そのたびに「manaba取込」を押すと、曜日がたまっていきます。全部そろったら「コピー」してください。',
+      reset: true
+    };
+  }
+
   var result;
   var taskTable = findTable();
   var ttTable = taskTable ? null : findTimetable();
+  var roomDays = taskTable || ttTable ? null : readRoomsOfPage();
   if (taskTable) result = readTasks(taskTable);
   else if (ttTable) result = readTimetable(ttTable);
+  else if (roomDays && Object.keys(roomDays).length) result = readRooms(roomDays);
   else {
-    alert('読み取れる表が見つかりませんでした。\nmanabaの「未提出課題一覧」か、「コース」の「曜日」表示のページで実行してください。');
+    alert('読み取れる表が見つかりませんでした。\nmanabaの「未提出課題一覧」、「コース」の「曜日」表示、またはBナビの「MYスケジュール」で授業のある日を選んだ状態で実行してください。');
     return;
   }
   var json = JSON.stringify(result.data);
@@ -162,7 +214,7 @@
 
   var sub = document.createElement('div');
   sub.style.cssText = 'font-size:13px;color:#555;margin:4px 0 12px';
-  sub.textContent = '「コピー」を押してから、アプリに戻って「② 取り込む」を押してください。';
+  sub.textContent = (result.note ? result.note + ' ' : '') + '「コピー」を押してから、アプリに戻って「② 取り込む」を押してください。';
   box.appendChild(sub);
 
   function btn(label, primary) {
@@ -215,6 +267,12 @@
     box.appendChild(link);
   }
 
+  if (result.reset) {
+    btn('ためた曜日を消して最初から', false).onclick = function () {
+      try { localStorage.removeItem(ROOMS_KEY); } catch (e) { /* ignore */ }
+      box.remove();
+    };
+  }
   btn('閉じる', false).onclick = function () { box.remove(); };
 
   document.body.appendChild(box);

@@ -1,0 +1,22 @@
+<!doctype html><meta charset="utf-8"><title>Bナビ HOME</title>
+<body>
+<h2>MYスケジュール</h2>
+<div class="cal"><span>2026年11月</span><table><tr><td>Sun</td><td>Mon</td></tr><tr><td>1</td><td>2</td></tr></table></div>
+<div id="schedule">
+  <div class="date"><img alt="">2026年11月26日(Thu)</div>
+  <ul>
+    <li>1限: 英語２(AD) @6301教室</li>
+    <li>2限: 教科概説「社会」(B2) @8501教室</li>
+    <li>2限: 教科概説「算数」(B1) @13201教室</li>
+    <li>3限: 物理学概論 @1301教室</li>
+    <li>4限: 教職概論(AC) @13202教室</li>
+  </ul>
+</div>
+<script>
+  // 日付を切り替えると中身が変わる(テスト用)
+  window.showMonday = function () {
+    document.getElementById('schedule').innerHTML =
+      '<div class="date">2026年11月30日(Mon)</div><ul><li>2限: 教育課程論(AB) @5101教室</li><li>2限: 教育方法論(AB) @5102教室</li><li>5限: 教科概説「体育」(B2) @体育館</li></ul>';
+  };
+</script>
+</body>

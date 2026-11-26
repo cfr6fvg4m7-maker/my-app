@@ -383,6 +383,12 @@ function parseImport(text) {
   } catch {
     throw new Error('manabaのデータとして読み取れませんでした。ブックマークレットでコピーした内容を貼り付けてください。');
   }
+  if (data && data.app === 'manaba-pwa' && data.kind === 'rooms' && Array.isArray(data.days)) {
+    const days = data.days
+      .filter((x) => x && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && Array.isArray(x.entries))
+      .map((x) => ({ date: x.date, entries: x.entries.filter((e) => e && e.period && e.name && e.room) }));
+    return { kind: 'rooms', days };
+  }
   if (data && data.app === 'manaba-pwa' && data.kind === 'timetable' && Array.isArray(data.slots)) {
     const slots = data.slots
       .filter((x) => x && x.day >= 0 && x.day <= 6 && x.period >= 1 && Array.isArray(x.courses) && x.courses.length)
@@ -476,6 +482,10 @@ function previewImport() {
     const parsed = parseImport(text);
     pendingImport = parsed;
     applyBtn.disabled = false;
+    if (parsed.kind === 'rooms') {
+      setKids(box, el('div', {}, `Bナビの教室: ${parsed.days.map((d) => WD[parseYmd(d.date).getDay()]).join('・')}曜の分を取り込みます`));
+      return;
+    }
     if (parsed.kind === 'timetable') {
       setKids(box, el('div', {}, `時間割: ${parsed.slots.length}コマを「${termLabel(state.timetable.currentTerm)}」に取り込みます`),
         el('div', {}, 'manabaから取り込んだ時間割で置き換えます(教室・単位数などの入力は、同じ授業なら残ります)'));
@@ -518,6 +528,7 @@ $('#btn-import-apply').addEventListener('click', () => {
   const parsed = pendingImport;
   pendingImport = null;
   $('#dlg-import').close();
+  if (parsed.kind === 'rooms') { toast(roomsResultText(applyRooms(parsed.days))); showView('timetable'); return; }
   if (parsed.kind === 'timetable') {
     const n = applyTimetable(parsed.slots);
     toast(`時間割を取り込みました(${n}コマ)`);
@@ -560,6 +571,55 @@ function tasksForClass(c) {
   return state.tasks
     .filter((t) => !t.done && t.course && (t.course === c.name || (names.length ? names.includes(t.course) : t.course.includes(c.name))))
     .sort((a, b) => a.end - b.end);
+}
+
+// 授業名をくらべるための形にそろえる(全角/半角、Ⅱ/２/II、空白の違いをなくす)
+function normName(s) {
+  return String(s || '').normalize('NFKC')
+    .replace(/(?<![A-Za-z])(IV|III|II|I)(?![A-Za-z])/g, (r) => ({ I: '1', II: '2', III: '3', IV: '4' })[r])
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
+// その授業(前半・後半のコマは授業ごと)の教室
+function unitRoom(c, u) {
+  if (!c) return '';
+  if (u && c.rooms && c.rooms[u.name]) return c.rooms[u.name];
+  return c.room || '';
+}
+
+// Bナビの MYスケジュールから読んだ教室を、曜日と時限で時間割に入れる
+function applyRooms(days) {
+  const result = { updated: 0, unmatched: [], weekdays: [] };
+  for (const day of days) {
+    const date = parseYmd(day.date);
+    const wd = date.getDay();
+    const term = state.timetable.terms[termIdFor(date)];
+    result.weekdays.push(WD[wd]);
+    if (!term) { result.unmatched.push(...day.entries.map((e) => e.name)); continue; }
+    for (const e of day.entries) {
+      const c = term.classes[classKey(wd, e.period)];
+      if (!c) { result.unmatched.push(e.name); continue; }
+      const room = e.room.trim();
+      if (isSplit(c)) {
+        const hit = c.courses.find((x) => normName(x.name) === normName(e.name));
+        if (!hit) { result.unmatched.push(e.name); continue; }
+        c.rooms = { ...(c.rooms || {}), [hit.name]: room };
+      } else {
+        c.room = room;
+      }
+      result.updated++;
+    }
+  }
+  saveState();
+  renderAll();
+  return result;
+}
+
+function roomsResultText(r) {
+  let t = `教室を${r.updated}件入れました(${r.weekdays.join('・')}曜)`;
+  if (r.unmatched.length) t += `。時間割にない授業: ${r.unmatched.join('、')}`;
+  return t;
 }
 
 // manaba のコース一覧(曜日表示)から取り込んだ時間割を反映する。
@@ -654,6 +714,7 @@ function renderTimetable() {
   const lines = [];
   const todayDs = dateStr(now);
   const todayTerm = termIdFor(now);
+  const roomOf = (x) => unitRoom(x.c, unitForDate(slotUnits(todayTerm, classKey(info.day, x.period), x.c), todayDs));
   // 授業名と「第◯回」(前半・後半で分かれるコマは、今日の授業だけ)
   const label = (x) => {
     const units = slotUnits(todayTerm, classKey(info.day, x.period), x.c);
@@ -669,12 +730,12 @@ function renderTimetable() {
   if (info.current && info.current.c) {
     const current = info.current;
     lines.push(el('div', {}, el('b', {}, `今 ${current.period}限 `), label(current),
-      current.c.room ? el('span', { class: 'muted' }, `(${current.c.room})`) : null,
+      roomOf(current) ? el('span', { class: 'muted' }, `(${roomOf(current)})`) : null,
       el('span', { class: 'muted' }, ` 〜${current.p.end}`)));
   }
   if (next) {
     lines.push(el('div', {}, el('b', {}, `次 ${next.period}限 `), label(next),
-      next.c.room ? el('span', { class: 'muted' }, `(${next.c.room})`) : null,
+      roomOf(next) ? el('span', { class: 'muted' }, `(${roomOf(next)})`) : null,
       el('span', { class: 'muted' }, ` ${next.p.start}〜`)));
   }
   // 今の授業(なければ今日さっき終わった授業)の出席をここで記録できる
@@ -720,7 +781,8 @@ function renderTimetable() {
         ...(c ? (c.courses && c.courses.length > 1 && !c.nameEdited
           ? c.courses.map((x) => el('span', { class: 'tt-name' }, x.name))
           : [el('span', { class: 'tt-name' }, c.name)]) : []),
-        c && c.room ? el('span', { class: 'tt-room' }, c.room) : null,
+        c && (c.room || c.rooms) ? el('span', { class: 'tt-room' },
+          isSplit(c) && c.rooms ? c.courses.map((x) => c.rooms[x.name]).filter(Boolean).join(' / ') : c.room) : null,
         ...(() => {
           if (!c) return [];
           const units = slotUnits(tt.currentTerm, classKey(d, period), c);
@@ -1008,7 +1070,8 @@ function renderClassAtt() {
     const sum = attSummary(termId, u, c);
     const n = attList(termId, u.akey).length;
     return el('div', { class: 'att-unit' },
-      el('div', { class: `att-head ${sum.level}` }, el('b', {}, isSplit(c) ? unitLabel(u) : '出席'), ' ', attText(sum)),
+      el('div', { class: `att-head ${sum.level}` }, el('b', {}, isSplit(c) ? unitLabel(u) : '出席'),
+        isSplit(c) && unitRoom(c, u) ? el('span', { class: 'small muted' }, ` @${unitRoom(c, u)}`) : null, ' ', attText(sum)),
       el('div', { class: 'small muted' }, `出席${sum.present} ・ 遅刻${sum.late} ・ 欠席${sum.absent}(全${sum.sessions}回 / 遅刻${sum.lateCount}回で欠席1回)`),
       el('div', { class: 'att-row' }, attButtons(termId, u.akey, dateInput.value, refresh),
         el('button', { type: 'button', class: 'btn small-btn', onclick: () => openAttLog(u.akey) }, `記録を見る・編集(${n})`)));
@@ -1302,7 +1365,7 @@ function renderToday() {
         el('div', { class: 'today-class-body' },
           el('div', { class: 'today-class-name' }, isSplit(c) ? unitLabel(u) : c.name),
           el('div', { class: 'small muted' },
-            [c.room, no > 0 ? `第${no}回` : null, state_ === 'now' ? '授業中' : state_ === 'done' ? '終了' : null].filter(Boolean).join(' ・ ')),
+            [unitRoom(c, u), no > 0 ? `第${no}回` : null, state_ === 'now' ? '授業中' : state_ === 'done' ? '終了' : null].filter(Boolean).join(' ・ ')),
           el('div', { class: `small att-mini ${sum.level}` }, attText(sum), tasks ? el('span', { class: 'tt-badge inline' }, `課題${tasks}`) : null),
           state_ !== 'later' ? attButtons(termId, u.akey, ds, () => renderAll()) : null),
         el('button', { type: 'button', class: 'att-sum-arrow link-btn', 'aria-label': '詳細', onclick: () => openClass(info.day, period) }, '›')));
@@ -1747,6 +1810,11 @@ async function quickImport() {
     parsed = parseImport(text);
   } catch {
     openImport(text);
+    return;
+  }
+  if (parsed.kind === 'rooms') {
+    toast(roomsResultText(applyRooms(parsed.days)));
+    showView('timetable');
     return;
   }
   if (parsed.kind === 'timetable') {
