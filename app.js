@@ -225,12 +225,45 @@ function renderTask(t, now) {
   );
 }
 
+// やることリストの絞り込み: all / manaba / mine
+let taskFilter = 'all';
+const isMine = (t) => t.source === 'todo' || t.source === 'manual';
+
+// 締切で「期限切れ/今日/明日/今週/来週以降」に分ける
+function taskGroup(t, now) {
+  const today = parseYmd(dateStr(new Date(now)));
+  const d = new Date(t.end);
+  const days = Math.round((parseYmd(dateStr(d)) - today) / DAY);
+  if (t.end < now && !(t.allDay && days === 0)) return 'overdue';
+  if (days <= 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  if (days <= 7) return 'week';
+  return 'later';
+}
+const GROUPS = [
+  ['overdue', '期限切れ'], ['today', '今日'], ['tomorrow', '明日'], ['week', '1週間以内'], ['later', 'それより先'],
+];
+
 function render() {
   const now = Date.now();
-  const open = state.tasks.filter((t) => !t.done).sort((a, b) => a.end - b.end);
-  const done = state.tasks.filter((t) => t.done).sort((a, b) => b.end - a.end);
+  const all = state.tasks.filter((t) => !t.done);
+  const pick = (t) => taskFilter === 'all' || (taskFilter === 'mine' ? isMine(t) : !isMine(t));
+  const open = all.filter(pick).sort((a, b) => a.end - b.end);
+  const done = state.tasks.filter((t) => t.done && pick(t)).sort((a, b) => b.end - a.end);
 
-  setKids($('#list-open'), ...open.map((t) => renderTask(t, now)));
+  setKids($('#task-filter'), ...[['all', 'すべて', all.length], ['manaba', 'manabaの課題', all.filter((t) => !isMine(t)).length], ['mine', '自分のやること', all.filter(isMine).length]]
+    .map(([k, label, n]) => el('button', {
+      type: 'button', class: `att-tab ${taskFilter === k ? 'on' : ''}`,
+      onclick: () => { taskFilter = k; render(); },
+    }, `${label} ${n}`)));
+
+  setKids($('#list-open'), ...GROUPS.map(([g, label]) => {
+    const items = open.filter((t) => taskGroup(t, now) === g);
+    if (!items.length) return null;
+    return el('section', { class: `task-group ${g}` },
+      el('h3', {}, label, el('span', { class: 'count' }, items.length)),
+      el('ul', { class: 'task-list' }, ...items.map((t) => renderTask(t, now))));
+  }));
   setKids($('#list-done'), ...done.map((t) => renderTask(t, now)));
 
   $('#empty').hidden = open.length > 0;
@@ -238,10 +271,7 @@ function render() {
   $('#done-section').hidden = done.length === 0;
   $('#done-count').textContent = `(${done.length})`;
 
-  const urgent = open.filter((t) => urgency(t.end, now) === 'urgent').length;
-  $('#summary').textContent = open.length
-    ? `未完了 ${open.length}件` + (urgent ? ` ・ 24時間以内 ${urgent}件` : '')
-    : '';
+  $('#summary').textContent = '';
   renderStale(now);
   $('#last-import').textContent = state.lastImportAt
     ? `最終取り込み: ${fmtDue(state.lastImportAt)}`
@@ -1354,6 +1384,52 @@ $('#form-todo').addEventListener('submit', (ev) => {
 
 document.querySelectorAll('[data-add-todo]').forEach((b) => b.addEventListener('click', () => openTodo()));
 
+/* ---------- すぐ追加(やることリストの上の入力欄) ---------- */
+let quickWhen = 'tomorrow';
+
+function quickDate(when, now = new Date()) {
+  const d = new Date(now);
+  if (when === 'tomorrow') d.setDate(d.getDate() + 1);
+  if (when === 'weekend') d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7)); // 次の土曜(今日が土曜なら来週)
+  return dateStr(d);
+}
+
+function renderQuickWhen() {
+  const f = $('#quick-todo');
+  f.querySelectorAll('.when-btn').forEach((b) => b.classList.toggle('on', b.dataset.when === quickWhen));
+  f.date.classList.toggle('on', quickWhen === 'date');
+}
+
+$('#quick-todo').querySelectorAll('.when-btn').forEach((b) => b.addEventListener('click', () => {
+  quickWhen = b.dataset.when;
+  $('#quick-todo').date.value = '';
+  renderQuickWhen();
+}));
+$('#quick-todo').date.addEventListener('change', (ev) => {
+  quickWhen = ev.target.value ? 'date' : 'tomorrow';
+  renderQuickWhen();
+});
+
+$('#quick-todo').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const f = ev.target;
+  const title = f.title.value.trim();
+  if (!title) { f.title.focus(); return; }
+  const ds = quickWhen === 'date' && f.date.value ? f.date.value : quickDate(quickWhen);
+  const [y, m, d] = ds.split('-').map(Number);
+  state.tasks.push({
+    id: 'td:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    source: 'todo', type: '', title, course: '', url: '',
+    start: null, end: new Date(y, m - 1, d, 23, 59).getTime(), allDay: true,
+    done: false, doneAt: null, missing: false, addedAt: Date.now(),
+  });
+  saveState();
+  f.title.value = '';
+  renderAll();
+  toast(`「${title}」を${fmtDay(ds)}に追加しました`);
+});
+
+
 // --- 試験 ---
 const EXAM_KINDS = ['定期試験', '小テスト', 'レポート試験', '中間試験', 'その他'];
 let editingExamId = null;
@@ -1486,7 +1562,7 @@ const TAB_KEY = 'manabaPwa.tab';
 let currentView = 'tasks';
 try { currentView = localStorage.getItem(TAB_KEY) || 'tasks'; } catch { /* ignore */ }
 
-const VIEWS = { today: '今日', tasks: '未提出課題', timetable: '時間割' };
+const VIEWS = { today: '今日', tasks: 'やること', timetable: '時間割' };
 
 function showView(view) {
   currentView = VIEWS[view] ? view : 'today';

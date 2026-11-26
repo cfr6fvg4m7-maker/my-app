@@ -39,6 +39,17 @@
 
   <main id="view-tasks" hidden>
     <div id="stale" class="stale" hidden></div>
+    <form id="quick-todo" class="quick-todo" autocomplete="off">
+      <input name="title" placeholder="やることを入力(例: 小テストの勉強)" enterkeyhint="done">
+      <div class="quick-when">
+        <button type="button" data-when="today" class="when-btn">今日</button>
+        <button type="button" data-when="tomorrow" class="when-btn on">明日</button>
+        <button type="button" data-when="weekend" class="when-btn">今週末</button>
+        <input type="date" name="date" class="when-date" aria-label="日付を選ぶ">
+        <button type="submit" class="btn primary">追加</button>
+      </div>
+    </form>
+    <div id="task-filter" class="att-filter"></div>
     <p id="summary" class="summary"></p>
     <div id="legend" class="legend" hidden>
       <span><i class="chip urgent"></i>24時間以内</span>
@@ -46,10 +57,10 @@
       <span><i class="chip later"></i>それより先</span>
       <span><i class="chip overdue"></i>締切すぎ</span>
     </div>
-    <ul id="list-open" class="task-list"></ul>
+    <div id="list-open" class="task-groups"></div>
     <p id="empty" class="empty" hidden>
-      課題はありません。<br>
-      「① manabaを開く」→「② 取り込む」か、下の「＋ 手動で追加」から登録できます。
+      やることはありません。<br>
+      上の入力欄から追加するか、「① manabaを開く」→「② 取り込む」でmanabaの課題を取り込めます。
     </p>
 
     <details id="done-section" class="done-section" hidden>
@@ -59,7 +70,7 @@
 
     <section class="tools">
       <button id="btn-backup" class="btn">データのバックアップ</button>
-      <button class="btn" data-add-todo>＋ やることを追加</button>
+      <button class="btn" data-add-todo>＋ 授業を選んでやることを追加</button>
       <button id="btn-add" class="btn">＋ 課題を手動で追加</button>
       <a class="btn link" href="bookmarklet.html">ブックマークレットの設定</a>
     </section>
@@ -93,7 +104,7 @@
       <span class="tab-icon">☀︎</span>今日
     </button>
     <button class="tab" data-view="tasks">
-      <span class="tab-icon">✓</span>課題<span id="tab-badge" class="tab-badge" hidden></span>
+      <span class="tab-icon">✓</span>やること<span id="tab-badge" class="tab-badge" hidden></span>
     </button>
     <button class="tab" data-view="timetable">
       <span class="tab-icon">▦</span>時間割<span id="tab-badge-tt" class="tab-badge" hidden></span>
