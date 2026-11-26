@@ -611,17 +611,10 @@ async function quickImport() {
 
 $('#btn-import').addEventListener('click', quickImport);
 
-// manaba の未提出課題一覧を Safari アプリで開く。
-// ホーム画面アプリ内のブラウザではブックマーク(manaba取込)が使えないため、
-// iOS の x-safari-https: で Safari 本体に渡す。
+// manaba の未提出課題一覧を、iPhone の標準ブラウザ(Safari / Brave など)で開く。
+// ブックマークレット「manaba取込」はそのブラウザに登録しておく。
 const MANABA_TODO_URL = 'https://bunkyo-u.manaba.jp/ct/home_library_query';
-$('#link-manaba-plain').href = MANABA_TODO_URL;
-$('#btn-open-manaba').addEventListener('click', () => {
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  if (isIOS) location.href = 'x-safari-' + MANABA_TODO_URL;
-  else window.open(MANABA_TODO_URL, '_blank', 'noopener');
-});
+$('#btn-open-manaba').href = MANABA_TODO_URL;
 $('#btn-add').addEventListener('click', openAdd);
 
 showView(currentView);
