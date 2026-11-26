@@ -1,5 +1,5 @@
 /*
- * manaba 未提出課題一覧 → PWA 取り込み用ブックマークレット本体。
+ * manaba 未提出課題一覧 / コース一覧(曜日表示) → PWA 取り込み用ブックマークレット本体。
  * bookmarklet.html がこのファイルを読み込み、__APP_URL__ を置き換えて
  * javascript: URL に変換する。(ここを編集したら bookmarklet.html から登録し直す)
  */
@@ -41,50 +41,109 @@
     return -1;
   }
 
-  var found = findTable();
-  if (!found) {
-    alert('未提出課題の表が見つかりませんでした。\nmanabaの「未提出課題一覧」ページで実行してください。');
+  // ---- 未提出課題一覧 ----
+  function readTasks(found) {
+    var h = found.headers;
+    var col = {
+      type: idx(h, 'タイプ'),
+      title: idx(h, 'タイトル'),
+      course: idx(h, 'コース'),
+      start: idx(h, '受付開始'),
+      end: idx(h, '受付終了')
+    };
+    var items = [];
+    var skipped = 0;
+    var rows = found.table.querySelectorAll('tr');
+    for (var r = found.headerRow + 1; r < rows.length; r++) {
+      var cells = rows[r].querySelectorAll('td,th');
+      if (cells.length <= Math.max(col.title, col.end)) continue;
+      var get = function (i) { return i >= 0 && cells[i] ? clean(cells[i].textContent) : ''; };
+      var end = get(col.end);
+      var title = get(col.title);
+      if (!title) continue;
+      if (!end) { skipped++; continue; }
+      var a = cells[col.title].querySelector('a[href]');
+      items.push({
+        type: get(col.type),
+        title: a ? clean(a.textContent) || title : title,
+        course: get(col.course),
+        start: get(col.start),
+        end: end,
+        url: a ? a.href : ''
+      });
+    }
+    return {
+      data: { app: 'manaba-pwa', v: 1, kind: 'tasks', at: new Date().toISOString(), items: items, skipped: skipped },
+      message: items.length + '件の課題を読み取りました' + (skipped ? '(締切なし ' + skipped + '件は除外)' : '')
+    };
+  }
+
+  // ---- コース一覧(曜日表示) ----
+  var DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+
+  // 見出し行に「月」「火」…が並ぶ表を探す
+  function findTimetable() {
+    var tables = document.querySelectorAll('table');
+    for (var i = 0; i < tables.length; i++) {
+      var rows = tables[i].querySelectorAll('tr');
+      if (!rows.length) continue;
+      var cells = rows[0].querySelectorAll('th,td');
+      var dayCols = {};
+      var n = 0;
+      for (var c = 0; c < cells.length; c++) {
+        var d = DAY_NAMES.indexOf(clean(cells[c].textContent));
+        if (d > 0) { dayCols[c] = d; n++; }
+      }
+      if (n >= 5) return { table: tables[i], dayCols: dayCols };
+    }
+    return null;
+  }
+
+  function readTimetable(found) {
+    var slots = [];
+    var count = 0;
+    var rows = found.table.querySelectorAll('tr');
+    for (var r = 1; r < rows.length; r++) {
+      var cells = rows[r].querySelectorAll('th,td');
+      if (!cells.length) continue;
+      var period = parseInt(clean(cells[0].textContent), 10);
+      if (!(period >= 1 && period <= 9)) continue; // 「他」の行などは飛ばす
+      for (var c = 1; c < cells.length; c++) {
+        var day = found.dayCols[c];
+        if (!day) continue;
+        // コース本体へのリンク(…/course_1234567)だけを拾う。アイコンのリンクは除外
+        var links = cells[c].querySelectorAll('a[href]');
+        var courses = [];
+        var seen = {};
+        for (var k = 0; k < links.length; k++) {
+          var href = links[k].href;
+          var name = clean(links[k].textContent).replace(/※リンク中/g, '').trim();
+          if (!name || !/course_\d+\/?(\?.*)?$/.test(href) || seen[href]) continue;
+          seen[href] = true;
+          courses.push({ name: name, url: href });
+        }
+        if (courses.length) {
+          slots.push({ day: day, period: period, courses: courses });
+          count += courses.length;
+        }
+      }
+    }
+    return {
+      data: { app: 'manaba-pwa', v: 1, kind: 'timetable', at: new Date().toISOString(), slots: slots },
+      message: '時間割を読み取りました(' + slots.length + 'コマ・授業' + count + '件)'
+    };
+  }
+
+  var result;
+  var taskTable = findTable();
+  var ttTable = taskTable ? null : findTimetable();
+  if (taskTable) result = readTasks(taskTable);
+  else if (ttTable) result = readTimetable(ttTable);
+  else {
+    alert('読み取れる表が見つかりませんでした。\nmanabaの「未提出課題一覧」か、「コース」の「曜日」表示のページで実行してください。');
     return;
   }
-
-  var h = found.headers;
-  var col = {
-    type: idx(h, 'タイプ'),
-    title: idx(h, 'タイトル'),
-    course: idx(h, 'コース'),
-    start: idx(h, '受付開始'),
-    end: idx(h, '受付終了')
-  };
-
-  var items = [];
-  var skipped = 0;
-  var rows = found.table.querySelectorAll('tr');
-  for (var r = found.headerRow + 1; r < rows.length; r++) {
-    var cells = rows[r].querySelectorAll('td,th');
-    if (cells.length <= Math.max(col.title, col.end)) continue;
-    var get = function (i) { return i >= 0 && cells[i] ? clean(cells[i].textContent) : ''; };
-    var end = get(col.end);
-    var title = get(col.title);
-    if (!title) continue;
-    if (!end) { skipped++; continue; }
-    var a = cells[col.title].querySelector('a[href]');
-    items.push({
-      type: get(col.type),
-      title: a ? clean(a.textContent) || title : title,
-      course: get(col.course),
-      start: get(col.start),
-      end: end,
-      url: a ? a.href : ''
-    });
-  }
-
-  var json = JSON.stringify({
-    app: 'manaba-pwa',
-    v: 1,
-    at: new Date().toISOString(),
-    items: items,
-    skipped: skipped
-  });
+  var json = JSON.stringify(result.data);
 
   // ---- 結果表示 ----
   var box = document.createElement('div');
@@ -98,13 +157,12 @@
 
   var msg = document.createElement('div');
   msg.style.fontWeight = '700';
-  msg.textContent = items.length + '件の課題を読み取りました' +
-    (skipped ? '(締切なし ' + skipped + '件は除外)' : '');
+  msg.textContent = result.message;
   box.appendChild(msg);
 
   var sub = document.createElement('div');
   sub.style.cssText = 'font-size:13px;color:#555;margin:4px 0 12px';
-  sub.textContent = '「コピー」を押してから、アプリの「manabaから取り込む」→「貼り付け」をしてください。';
+  sub.textContent = '「コピー」を押してから、アプリに戻って「② 取り込む」を押してください。';
   box.appendChild(sub);
 
   function btn(label, primary) {

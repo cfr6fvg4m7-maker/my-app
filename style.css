@@ -221,3 +221,8 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .chip.soon { background: var(--soon-bg); border-left-color: var(--soon-bar); }
 .chip.later { background: var(--card); }
 .chip.overdue { background: var(--overdue-bg); }
+
+.tt-help { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin: 12px 4px 0; }
+.tt-help ol { margin: 4px 0 6px; padding-left: 20px; }
+.tt-cell .tt-name + .tt-name { border-top: 1px dotted var(--border); padding-top: 2px; }
+.tt-cell .tt-name:has(+ .tt-name), .tt-cell .tt-name + .tt-name { -webkit-line-clamp: 2; }

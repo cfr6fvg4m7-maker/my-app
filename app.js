@@ -268,6 +268,17 @@ function parseImport(text) {
   } catch {
     throw new Error('manabaのデータとして読み取れませんでした。ブックマークレットでコピーした内容を貼り付けてください。');
   }
+  if (data && data.app === 'manaba-pwa' && data.kind === 'timetable' && Array.isArray(data.slots)) {
+    const slots = data.slots
+      .filter((x) => x && x.day >= 0 && x.day <= 6 && x.period >= 1 && Array.isArray(x.courses) && x.courses.length)
+      .map((x) => ({
+        day: Number(x.day),
+        period: Number(x.period),
+        courses: x.courses.filter((c) => c && c.name).map((c) => ({ name: String(c.name).trim(), url: c.url || '' })),
+      }))
+      .filter((x) => x.courses.length);
+    return { kind: 'timetable', slots };
+  }
   if (!data || data.app !== 'manaba-pwa' || !Array.isArray(data.items)) {
     throw new Error('manabaのデータではないようです。');
   }
@@ -286,7 +297,7 @@ function parseImport(text) {
       end,
     });
   }
-  return { items, skipped: (data.skipped || 0) + bad };
+  return { kind: 'tasks', items, skipped: (data.skipped || 0) + bad };
 }
 
 function planMerge(incoming) {
@@ -347,9 +358,16 @@ function previewImport() {
   applyBtn.disabled = true;
   if (!text.trim()) { box.replaceChildren(); return; }
   try {
-    const { items, skipped } = parseImport(text);
+    const parsed = parseImport(text);
+    pendingImport = parsed;
+    applyBtn.disabled = false;
+    if (parsed.kind === 'timetable') {
+      box.replaceChildren(el('div', {}, `時間割: ${parsed.slots.length}コマを読み取りました`),
+        el('div', {}, 'manabaから取り込んだ時間割で置き換えます(教室・単位数などの入力は、同じ授業なら残ります)'));
+      return;
+    }
+    const { items, skipped } = parsed;
     const p = planMerge(items);
-    pendingImport = items;
     applyBtn.disabled = false;
     box.replaceChildren(
       el('div', {}, `読み取り: ${items.length}件` + (skipped ? `(締切なしなどで除外 ${skipped}件)` : '')),
@@ -382,11 +400,17 @@ $('#btn-paste').addEventListener('click', async () => {
 
 $('#btn-import-apply').addEventListener('click', () => {
   if (!pendingImport) return;
-  const n = pendingImport.length;
-  applyMerge(pendingImport);
+  const parsed = pendingImport;
   pendingImport = null;
   $('#dlg-import').close();
-  toast(`${n}件を取り込みました`);
+  if (parsed.kind === 'timetable') {
+    const n = applyTimetable(parsed.slots);
+    toast(`時間割を取り込みました(${n}コマ)`);
+    showView('timetable');
+    return;
+  }
+  applyMerge(parsed.items);
+  toast(`${parsed.items.length}件を取り込みました`);
 });
 
 // Safari のタブで使う場合: ブックマークレットから app/#import=... で直接開ける
@@ -409,11 +433,47 @@ function toMin(hhmm) {
 function classKey(day, period) { return `${day}-${period}`; }
 
 // 授業に結びつく未完了の課題(manabaのコース名が一致、なければ授業名を含むもの)
+function classCourseNames(c) {
+  if (!c) return [];
+  if (Array.isArray(c.courses) && c.courses.length) return c.courses.map((x) => x.name);
+  return c.course ? [c.course] : [];
+}
+
 function tasksForClass(c) {
   if (!c) return [];
+  const names = classCourseNames(c);
   return state.tasks
-    .filter((t) => !t.done && t.course && (c.course ? t.course === c.course : t.course.includes(c.name)))
+    .filter((t) => !t.done && t.course && (names.length ? names.includes(t.course) : t.course.includes(c.name)))
     .sort((a, b) => a.end - b.end);
+}
+
+// manaba のコース一覧(曜日表示)から取り込んだ時間割を反映する。
+// manaba 由来のコマは置き換え、手入力の教室・先生・単位数は同じ授業なら引き継ぐ。
+function applyTimetable(slots) {
+  const classes = state.timetable.classes;
+  const keys = new Set(slots.map((x) => classKey(x.day, x.period)));
+  for (const [k, c] of Object.entries(classes)) {
+    if (c && c.source === 'manaba' && !keys.has(k)) delete classes[k];
+  }
+  for (const x of slots) {
+    const k = classKey(x.day, x.period);
+    const old = classes[k];
+    const name = x.courses.map((c) => c.name).join(' / ');
+    const same = old && classCourseNames(old).join(' / ') === name;
+    classes[k] = {
+      name: same && old.name ? old.name : name,
+      room: same ? old.room || '' : '',
+      teacher: same ? old.teacher || '' : '',
+      credits: same ? old.credits ?? null : null,
+      course: '',
+      courses: x.courses,
+      source: 'manaba',
+    };
+  }
+  state.timetable.lastImportAt = Date.now();
+  saveState();
+  renderAll();
+  return slots.length;
 }
 
 // 今の時限(授業中)と、今日このあとの授業
@@ -474,7 +534,9 @@ function renderTimetable() {
         'aria-label': `${WD[d]}曜${period}限 ${c ? c.name : '空き'}`,
         onclick: () => openClass(d, period),
       },
-        c ? el('span', { class: 'tt-name' }, c.name) : null,
+        ...(c ? (c.courses && c.courses.length > 1 && !c.nameEdited
+          ? c.courses.map((x) => el('span', { class: 'tt-name' }, x.name))
+          : [el('span', { class: 'tt-name' }, c.name)]) : []),
         c && c.room ? el('span', { class: 'tt-room' }, c.room) : null,
         n ? el('span', { class: 'tt-badge' }, `課題${n}`) : null,
       ));
@@ -522,6 +584,13 @@ function openClass(day, period) {
       t.url ? el('a', { href: t.url, target: '_blank', rel: 'noopener' }, t.title) : el('span', {}, t.title),
       el('span', { class: 'small' }, ` ${fmtDue(t.end)} ${fmtRemain(t.end, now)}`))),
   ] : []));
+  const links = c && Array.isArray(c.courses) ? c.courses.filter((x) => x.url) : [];
+  if (links.length) {
+    $('#class-tasks').prepend(el('div', { class: 'small' }, 'manabaのコース: ',
+      ...links.flatMap((x, i) => [i ? ' / ' : null, el('a', { href: x.url, target: '_blank', rel: 'noopener' }, x.name)])));
+  }
+  // manabaから取り込んだコマはコース名が決まっているので入力欄を隠す
+  $('#form-class').course.closest('label').hidden = Boolean(c && c.courses && c.courses.length);
   $('#btn-class-clear').hidden = !c;
   $('#dlg-class').showModal();
 }
@@ -532,7 +601,11 @@ $('#form-class').addEventListener('submit', (ev) => {
   const name = f.name.value.trim();
   if (!name) return;
   const credits = f.credits.value === '' ? null : Number(f.credits.value);
-  state.timetable.classes[classKey(editingSlot.day, editingSlot.period)] = {
+  const key = classKey(editingSlot.day, editingSlot.period);
+  const old = state.timetable.classes[key] || {};
+  state.timetable.classes[key] = {
+    ...old,
+    nameEdited: old.name ? old.name !== name || old.nameEdited || false : false,
     name,
     room: f.room.value.trim(),
     teacher: f.teacher.value.trim(),
@@ -555,6 +628,15 @@ $('#btn-class-clear').addEventListener('click', () => {
   $('#dlg-class').close();
 });
 
+/* ---------- manaba を Safari で開く ---------- */
+// ブックマークレット「manaba取込」は Safari に登録してあるので、標準ブラウザが Brave などでも
+// Safari 本体で開くよう iOS の x-safari-https: を使う。
+const MANABA_TODO_URL = 'https://bunkyo-u.manaba.jp/ct/home_library_query';
+const MANABA_COURSE_URL = 'https://bunkyo-u.manaba.jp/ct/home_course?chglistformat=timetable';
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function manabaUrl(url) { return isIOS ? 'x-safari-' + url : url; }
+
 /* ---------- 画面の切り替え ---------- */
 
 const TAB_KEY = 'manabaPwa.tab';
@@ -566,7 +648,8 @@ function showView(view) {
   try { localStorage.setItem(TAB_KEY, currentView); } catch { /* ignore */ }
   $('#view-tasks').hidden = currentView !== 'tasks';
   $('#view-timetable').hidden = currentView !== 'timetable';
-  $('#btn-import').hidden = currentView !== 'tasks';
+  // 時間割画面では ① で manaba のコース一覧(曜日表示)を開く
+  $('#btn-open-manaba').href = manabaUrl(currentView === 'timetable' ? MANABA_COURSE_URL : MANABA_TODO_URL);
   $('#page-title').textContent = currentView === 'tasks' ? '未提出課題' : '時間割';
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.view === currentView));
   renderAll();
@@ -603,6 +686,13 @@ async function quickImport() {
     openImport(text);
     return;
   }
+  if (parsed.kind === 'timetable') {
+    if (!confirm(`manabaの時間割(${parsed.slots.length}コマ)を取り込みますか?\n今の時間割は置き換わります(同じ授業の教室・単位数などは残ります)。`)) return;
+    const n = applyTimetable(parsed.slots);
+    toast(`時間割を取り込みました(${n}コマ)`);
+    showView('timetable');
+    return;
+  }
   const p = planMerge(parsed.items);
   applyMerge(parsed.items);
   const parts = [`新規${p.added}件`, `更新${p.updated}件`];
@@ -612,12 +702,7 @@ async function quickImport() {
 
 $('#btn-import').addEventListener('click', quickImport);
 
-// manaba の未提出課題一覧を Safari で開く(ブックマークレット「manaba取込」は Safari に登録してある)。
-// 標準ブラウザが Brave などでも Safari 本体で開くよう、iOS の x-safari-https: を使う。
-const MANABA_TODO_URL = 'https://bunkyo-u.manaba.jp/ct/home_library_query';
-const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-$('#btn-open-manaba').href = isIOS ? 'x-safari-' + MANABA_TODO_URL : MANABA_TODO_URL;
+
 $('#btn-add').addEventListener('click', openAdd);
 
 showView(currentView);
