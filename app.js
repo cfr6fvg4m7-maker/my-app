@@ -547,7 +547,9 @@ function nowInfo(date = new Date()) {
   let current = null;
   let last = null;
   const upcoming = [];
-  if (tt.days.includes(day)) {
+  const dayInfo = calDayInfo(date);
+  const noClass = dayInfo && dayInfo.type !== 'class';
+  if (tt.days.includes(day) && !noClass) {
     tt.periods.forEach((p, i) => {
       const c = todays[classKey(day, i + 1)];
       if (min >= toMin(p.start) && min < toMin(p.end)) current = { period: i + 1, p, c };
@@ -555,7 +557,7 @@ function nowInfo(date = new Date()) {
       else if (min >= toMin(p.end) && c) last = { period: i + 1, p, c };
     });
   }
-  return { day, current, last, next: upcoming[0] || null };
+  return { day, current, last, next: upcoming[0] || null, dayInfo };
 }
 
 function renderTermSelect() {
@@ -595,16 +597,26 @@ function renderTimetable() {
   const next = info.next;
   renderTermSelect();
 
-  // 上部: 今の授業 / 次の授業
+  // 上部: 今日の状況 / 今の授業 / 次の授業
   const lines = [];
+  const todayDs = dateStr(now);
+  const todayTerm = termIdFor(now);
+  const no = (period) => {
+    const n = sessionNo(todayTerm, info.day, todayDs);
+    return n ? ` 第${n}回` : '';
+  };
+  if (info.dayInfo && info.dayInfo.label) {
+    lines.push(el('div', { class: `day-info ${info.dayInfo.type}` },
+      info.dayInfo.type === 'class' ? `今日は${info.dayInfo.label}` : `今日は授業がありません(${info.dayInfo.label})`));
+  }
   if (info.current && info.current.c) {
     const current = info.current;
-    lines.push(el('div', {}, el('b', {}, `今 ${current.period}限 `), current.c.name,
+    lines.push(el('div', {}, el('b', {}, `今 ${current.period}限 `), current.c.name + no(current.period),
       current.c.room ? el('span', { class: 'muted' }, `(${current.c.room})`) : null,
       el('span', { class: 'muted' }, ` 〜${current.p.end}`)));
   }
   if (next) {
-    lines.push(el('div', {}, el('b', {}, `次 ${next.period}限 `), next.c.name,
+    lines.push(el('div', {}, el('b', {}, `次 ${next.period}限 `), next.c.name + no(next.period),
       next.c.room ? el('span', { class: 'muted' }, `(${next.c.room})`) : null,
       el('span', { class: 'muted' }, ` ${next.p.start}〜`)));
   }
@@ -619,10 +631,10 @@ function renderTimetable() {
       attButtons(todayTerm, key, dateStr(now), () => renderTimetable()),
       el('span', { class: `small att-mini ${sum.level}` }, attText(sum))));
   }
-  if (!(info.current && info.current.c) && !next) {
+  if (!(info.current && info.current.c) && !next && !(info.dayInfo && info.dayInfo.type !== 'class')) {
     const todays = (tt.terms[termIdFor(now)] || { classes: {} }).classes;
     const any = tt.days.includes(info.day) && tt.periods.some((_, i) => todays[classKey(info.day, i + 1)]);
-    lines.unshift(el('div', { class: 'muted' }, any ? '今日の授業はもうありません' : '今日の授業はありません'));
+    lines.push(el('div', { class: 'muted' }, any ? '今日の授業はもうありません' : '今日の授業はありません'));
   }
   $('#tt-now').replaceChildren(...lines);
 
@@ -774,10 +786,25 @@ function dateStr(d) {
 }
 
 // その曜日の直近の日付(今日がその曜日なら今日)
-function recentDateFor(day, now = new Date()) {
+function recentDateFor(day, now = new Date(), termId = state.timetable.currentTerm) {
+  // 年間予定があれば、今日までで一番近い授業日
+  const dates = calClassDates(termId, day);
+  const today = dateStr(now);
+  if (dates && dates.length) {
+    const past = dates.filter((x) => x <= today);
+    return past.length ? past[past.length - 1] : dates[0];
+  }
   const d = new Date(now);
   d.setDate(d.getDate() - ((d.getDay() - day + 7) % 7));
   return dateStr(d);
+}
+
+// 年間予定にもとづく「第何回」(なければ null)
+function sessionNo(termId, day, ds) {
+  const dates = calClassDates(termId, day);
+  if (!dates) return null;
+  const i = dates.indexOf(ds);
+  return i >= 0 ? i + 1 : null;
 }
 
 function attList(termId, key) {
@@ -800,7 +827,8 @@ function attSummary(termId, key, c) {
   const list = attList(termId, key);
   const n = { present: 0, late: 0, absent: 0 };
   for (const r of list) if (n[r.status] != null) n[r.status]++;
-  const sessions = (c && c.sessions) || rules.sessions;
+  const calDates = calClassDates(termId, Number(key.split('-')[0]));
+  const sessions = (c && c.sessions) || (calDates && calDates.length) || rules.sessions;
   const lateCount = (c && c.lateCount) || rules.lateCount;
   const equiv = n.absent + Math.floor(n.late / lateCount);
   const failAt = Math.ceil(sessions * rules.failRatio - 1e-9); // 15回なら5回で不可
@@ -884,19 +912,26 @@ function renderAttLog() {
   $('#att-stat').replaceChildren(el('b', {}, attText(sum)),
     el('div', { class: 'small muted' }, `出席${sum.present} ・ 遅刻${sum.late} ・ 欠席${sum.absent}(全${sum.sessions}回 / 遅刻${sum.lateCount}回で欠席1回)`));
 
-  const counts = { all: sum.total, absent: sum.absent, late: sum.late, present: sum.present };
-  $('#att-filter').replaceChildren(...[['all', 'すべて'], ['absent', '欠席'], ['late', '遅刻'], ['present', '出席']]
+  // 年間予定があれば、今日までの授業日を全部並べる(記録していない日は「未記録」)
+  const today = dateStr(new Date());
+  const calDates = (calClassDates(termId, day) || []).filter((x) => x <= today);
+  const recs = new Map(attList(termId, key).map((r) => [r.date, r]));
+  const rows = [...new Set([...calDates, ...recs.keys()])].sort().reverse()
+    .map((ds) => ({ date: ds, status: recs.has(ds) ? recs.get(ds).status : 'none', no: sessionNo(termId, day, ds) }));
+  const counts = { all: rows.length, absent: sum.absent, late: sum.late, present: sum.present, none: rows.filter((r) => r.status === 'none').length };
+  $('#att-filter').replaceChildren(...[['all', 'すべて'], ['absent', '欠席'], ['late', '遅刻'], ['present', '出席'], ['none', '未記録']]
+    .filter(([k]) => k !== 'none' || calDates.length)
     .map(([k, label]) => el('button', {
       type: 'button', class: `att-tab ${attFilter === k ? 'on' : ''}`,
       onclick: () => { attFilter = k; renderAttLog(); },
     }, `${label} ${counts[k]}`)));
 
   const refresh = () => { renderAttLog(); renderTimetable(); if (editingSlot) renderClassAtt(); };
-  const list = attList(termId, key).slice().reverse().filter((r) => attFilter === 'all' || r.status === attFilter);
+  const list = rows.filter((r) => attFilter === 'all' || r.status === attFilter);
   $('#att-list').replaceChildren(...(list.length ? list.map((r) => el('li', { class: `att-item ${r.status}` },
-    el('span', { class: 'att-day' }, fmtDay(r.date)),
+    el('span', { class: 'att-day' }, fmtDay(r.date), r.no ? el('small', {}, `第${r.no}回`) : null),
     attButtons(termId, key, r.date, refresh, true),
-    el('button', {
+    r.status === 'none' ? el('span', { class: 'att-none small' }, '未記録') : el('button', {
       type: 'button', class: 'att-trash', 'aria-label': `${fmtDay(r.date)}の記録を削除`,
       onclick: () => {
         if (!confirm(`${fmtDay(r.date)} の記録(${ATT_LABEL[r.status]})を削除しますか?`)) return;
@@ -904,7 +939,7 @@ function renderAttLog() {
         refresh();
       },
     }, '🗑'),
-  )) : [el('li', { class: 'muted small att-empty' }, attFilter === 'all' ? 'まだ記録がありません' : 'この種類の記録はありません')]));
+  )) : [el('li', { class: 'muted small att-empty' }, attFilter === 'all' ? 'まだ記録がありません' : 'この種類の日はありません')]));
 
   const addDate = $('#att-add-date');
   addDate.onchange = renderAttLog;

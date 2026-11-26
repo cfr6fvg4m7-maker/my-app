@@ -295,3 +295,9 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .att-trash { appearance: none; border: none; background: none; font-size: 16px; margin-left: auto; cursor: pointer; padding: 4px; }
 .att-empty { padding: 8px; }
 .att-add { display: grid; gap: 4px; border-top: 1px solid var(--border); padding-top: 8px; }
+
+.day-info { font-size: 13px; font-weight: 600; color: var(--muted); }
+.day-info.off, .day-info.exam { color: var(--warn); }
+.att-day small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+.att-item.none { background: transparent; border: 1px dashed var(--border); }
+.att-none { margin-left: auto; color: var(--muted); padding: 0 4px; }
