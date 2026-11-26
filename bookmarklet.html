@@ -27,6 +27,7 @@
 
     <div class="card">
       <button id="copy" class="btn primary wide" disabled>コードをコピー</button>
+      <button id="copy-short" class="btn wide" style="margin-top:8px" disabled>短いコードをコピー(Braveで保存できないとき)</button>
       <p id="status" class="small muted" style="margin:8px 0 0">読み込み中…</p>
     </div>
 
@@ -42,7 +43,7 @@
     <h2>Braveでの設定(1回だけ)</h2>
     <ol>
       <li>Braveでこのページを開き、右下の「<b>⋯</b>」→「<b>ブックマークを追加</b>」(または☆)。名前を「<b>manaba取込</b>」にして保存。</li>
-      <li>上の「<b>コードをコピー</b>」を押す。</li>
+      <li>上の「<b>短いコードをコピー</b>」を押す。</li>
       <li>「⋯」→「<b>ブックマーク</b>」→「<b>編集</b>」→「manaba取込」をタップ。</li>
       <li>URLの欄を<b>全部消して</b>、長押しで「<b>ペースト</b>」→ 保存。</li>
     </ol>
@@ -81,6 +82,21 @@
       document.getElementById('drag').href = code;
       copyBtn.disabled = false;
       status.textContent = '準備できました。';
+      // 短いコード: 実行するたびに bookmarklet.js をこのサイトから読み込む
+      const jsUrl = new URL('bookmarklet.js', location.href).href;
+      // 日本語はURLとして受け付けないブラウザがあるので encodeURI で %XX にする
+      const shortCode = encodeURI("javascript:(function(){var s=document.createElement('script');s.src='" + jsUrl +
+        "?t='+Date.now();s.onerror=function(){alert('読み込めませんでした。通信状態を確認してください。')};document.body.appendChild(s)})()");
+      const shortBtn = document.getElementById('copy-short');
+      shortBtn.disabled = false;
+      shortBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(shortCode);
+          status.textContent = '短いコードをコピーしました。ブックマークのURL欄に貼り付けてください。';
+        } catch {
+          status.textContent = 'コピーできませんでした。';
+        }
+      });
       copyBtn.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(code);

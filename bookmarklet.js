@@ -5,6 +5,10 @@
  */
 (function () {
   var APP_URL = '__APP_URL__';
+  // 短いコード(このファイルを読み込む形)で実行されたときは、読み込み元からアプリのURLを求める
+  if (APP_URL.indexOf('http') !== 0 && document.currentScript && document.currentScript.src) {
+    APP_URL = document.currentScript.src.replace(/bookmarklet\.js.*$/, '');
+  }
   var ID = 'manaba-pwa-overlay';
 
   var old = document.getElementById(ID);
