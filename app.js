@@ -601,9 +601,13 @@ function renderTimetable() {
   const lines = [];
   const todayDs = dateStr(now);
   const todayTerm = termIdFor(now);
-  const no = (period) => {
-    const n = sessionNo(todayTerm, info.day, todayDs);
-    return n ? ` 第${n}回` : '';
+  // 授業名と「第◯回」(前半・後半で分かれるコマは、今日の授業だけ)
+  const label = (x) => {
+    const units = slotUnits(todayTerm, classKey(info.day, x.period), x.c);
+    const u = unitForDate(units, todayDs);
+    const name = isSplit(x.c) ? unitLabel(u) : x.c.name;
+    const i = u && u.dates ? u.dates.indexOf(todayDs) : -1;
+    return i >= 0 ? `${name} 第${i + 1}回` : name;
   };
   if (info.dayInfo && info.dayInfo.label) {
     lines.push(el('div', { class: `day-info ${info.dayInfo.type}` },
@@ -611,12 +615,12 @@ function renderTimetable() {
   }
   if (info.current && info.current.c) {
     const current = info.current;
-    lines.push(el('div', {}, el('b', {}, `今 ${current.period}限 `), current.c.name + no(current.period),
+    lines.push(el('div', {}, el('b', {}, `今 ${current.period}限 `), label(current),
       current.c.room ? el('span', { class: 'muted' }, `(${current.c.room})`) : null,
       el('span', { class: 'muted' }, ` 〜${current.p.end}`)));
   }
   if (next) {
-    lines.push(el('div', {}, el('b', {}, `次 ${next.period}限 `), next.c.name + no(next.period),
+    lines.push(el('div', {}, el('b', {}, `次 ${next.period}限 `), label(next),
       next.c.room ? el('span', { class: 'muted' }, `(${next.c.room})`) : null,
       el('span', { class: 'muted' }, ` ${next.p.start}〜`)));
   }
@@ -625,10 +629,14 @@ function renderTimetable() {
   if (attTarget) {
     const todayTerm = termIdFor(now);
     const key = classKey(info.day, attTarget.period);
-    const sum = attSummary(todayTerm, key, attTarget.c);
+    const unit = unitForDate(slotUnits(todayTerm, key, attTarget.c), todayDs);
+    const sum = attSummary(todayTerm, unit, attTarget.c);
+    const who = isSplit(attTarget.c) ? unitLabel(unit) : attTarget.c.name;
     lines.push(el('div', { class: 'now-att' },
-      el('span', { class: 'small' }, attTarget === info.current ? '出席を記録:' : `${attTarget.period}限 ${attTarget.c.name} の出席:`),
-      attButtons(todayTerm, key, dateStr(now), () => renderTimetable()),
+      el('span', { class: 'small' }, attTarget === info.current
+        ? (isSplit(attTarget.c) ? `${who} の出席:` : '出席を記録:')
+        : `${attTarget.period}限 ${who} の出席:`),
+      attButtons(todayTerm, unit.akey, todayDs, () => renderTimetable()),
       el('span', { class: `small att-mini ${sum.level}` }, attText(sum))));
   }
   if (!(info.current && info.current.c) && !next && !(info.dayInfo && info.dayInfo.type !== 'class')) {
@@ -660,10 +668,11 @@ function renderTimetable() {
           ? c.courses.map((x) => el('span', { class: 'tt-name' }, x.name))
           : [el('span', { class: 'tt-name' }, c.name)]) : []),
         c && c.room ? el('span', { class: 'tt-room' }, c.room) : null,
-        (() => {
-          if (!c) return null;
-          const a = attSummary(tt.currentTerm, classKey(d, period), c);
-          return a.equiv ? el('span', { class: `tt-att ${a.level}` }, `欠${a.equiv}/${a.allowed}`) : null;
+        ...(() => {
+          if (!c) return [];
+          const units = slotUnits(tt.currentTerm, classKey(d, period), c);
+          const sums = units.map((u) => attSummary(tt.currentTerm, u, c)).filter((a) => a.equiv);
+          return sums.map((a) => el('span', { class: `tt-att ${a.level}` }, `欠${a.equiv}/${a.allowed}`));
         })(),
         n ? el('span', { class: 'tt-badge' }, `課題${n}`) : null,
       ));
@@ -821,14 +830,77 @@ function setAttendance(termId, key, date, status) {
   saveState();
 }
 
-// 欠席の数え方: 欠席 + 遅刻(lateCount回で1回)。授業回数の failRatio 以上で単位NG
-function attSummary(termId, key, c) {
+/* 出席を数える単位(unit)
+ * 普通のコマ: コマ全体で1つ(akey = "曜日-時限")
+ * 前半・後半で授業が分かれるコマ(授業が2つ): 授業ごとに1つ(akey = "曜日-時限|授業名")
+ *   前半 = 第1〜8回の授業日、後半 = 第9回以降(足りない回は日付を選んで追加)
+ */
+const HALF_SESSIONS = 8;
+
+function isSplit(c) {
+  return Boolean(c && Array.isArray(c.courses) && c.courses.length >= 2);
+}
+
+function slotUnits(termId, slotKey, c) {
+  if (!c) return [];
+  const [day, period] = slotKey.split('-').map(Number);
+  const all = calClassDates(termId, day);
   const rules = state.timetable.rules;
-  const list = attList(termId, key);
+  if (!isSplit(c)) {
+    return [{
+      akey: slotKey, slotKey, day, period, name: c.name, half: null, dates: all,
+      sessions: c.sessions || (all && all.length) || rules.sessions,
+    }];
+  }
+  const order = c.courses.map((x) => x.name);
+  if (c.halfSwap) order.reverse();
+  return order.map((name, i) => {
+    const half = i % 2 === 0 ? 'first' : 'second';
+    return {
+      akey: `${slotKey}|${name}`, slotKey, day, period, name, half,
+      dates: all ? (half === 'first' ? all.slice(0, HALF_SESSIONS) : all.slice(HALF_SESSIONS)) : null,
+      sessions: c.sessions || HALF_SESSIONS,
+    };
+  });
+}
+
+// その日に出席を記録する授業(前半・後半のどちらか)
+function unitForDate(units, ds) {
+  if (units.length <= 1) return units[0] || null;
+  const hit = units.find((u) => u.dates && u.dates.includes(ds));
+  if (hit) return hit;
+  const first = units.find((u) => u.half === 'first');
+  const second = units.find((u) => u.half === 'second') || first;
+  if (first && first.dates && first.dates.length) return ds <= first.dates[first.dates.length - 1] ? first : second;
+  return first;
+}
+
+function unitLabel(u) {
+  return u.half ? `${u.name}(${u.half === 'first' ? '前半' : '後半'})` : u.name;
+}
+
+function recentDateForUnit(u, now = new Date()) {
+  const today = dateStr(now);
+  if (u.dates && u.dates.length) {
+    const past = u.dates.filter((x) => x <= today);
+    return past.length ? past[past.length - 1] : u.dates[0];
+  }
+  return recentDateFor(u.day, now);
+}
+
+function findUnit(termId, akey) {
+  const slotKey = akey.split('|')[0];
+  const c = (state.timetable.terms[termId] || { classes: {} }).classes[slotKey];
+  return { c, unit: slotUnits(termId, slotKey, c).find((u) => u.akey === akey) || null };
+}
+
+// 欠席の数え方: 欠席 + 遅刻(lateCount回で1回)。授業回数の failRatio 以上で単位NG
+function attSummary(termId, unit, c) {
+  const rules = state.timetable.rules;
+  const list = attList(termId, unit.akey);
   const n = { present: 0, late: 0, absent: 0 };
   for (const r of list) if (n[r.status] != null) n[r.status]++;
-  const calDates = calClassDates(termId, Number(key.split('-')[0]));
-  const sessions = (c && c.sessions) || (calDates && calDates.length) || rules.sessions;
+  const sessions = unit.sessions;
   const lateCount = (c && c.lateCount) || rules.lateCount;
   const equiv = n.absent + Math.floor(n.late / lateCount);
   const failAt = Math.ceil(sessions * rules.failRatio - 1e-9); // 15回なら5回で不可
@@ -866,19 +938,27 @@ function renderClassAtt() {
   const termId = state.timetable.currentTerm;
   const c = ttClasses()[key];
   if (!c) { box.replaceChildren(); return; }
+  const units = slotUnits(termId, key, c);
   const dateInput = $('#att-date') || el('input', { type: 'date', id: 'att-date', class: 'att-date' });
-  if (!dateInput.value) dateInput.value = recentDateFor(day);
+  if (!dateInput.value) dateInput.value = recentDateForUnit(unitForDate(units, dateStr(new Date())));
   dateInput.onchange = renderClassAtt;
-  const sum = attSummary(termId, key, c);
-  const list = attList(termId, key).slice().reverse();
+  const refresh = () => { renderClassAtt(); renderTimetable(); };
+  const blocks = units.map((u) => {
+    const sum = attSummary(termId, u, c);
+    const n = attList(termId, u.akey).length;
+    return el('div', { class: 'att-unit' },
+      el('div', { class: `att-head ${sum.level}` }, el('b', {}, isSplit(c) ? unitLabel(u) : '出席'), ' ', attText(sum)),
+      el('div', { class: 'small muted' }, `出席${sum.present} ・ 遅刻${sum.late} ・ 欠席${sum.absent}(全${sum.sessions}回 / 遅刻${sum.lateCount}回で欠席1回)`),
+      el('div', { class: 'att-row' }, attButtons(termId, u.akey, dateInput.value, refresh),
+        el('button', { type: 'button', class: 'btn small-btn', onclick: () => openAttLog(u.akey) }, `記録を見る・編集(${n})`)));
+  });
   box.replaceChildren(
-    el('div', { class: `att-head ${sum.level}` }, el('b', {}, '出席'), ' ', attText(sum)),
-    el('div', { class: 'small muted' }, `出席${sum.present} ・ 遅刻${sum.late} ・ 欠席${sum.absent}(全${sum.sessions}回 / 遅刻${sum.lateCount}回で欠席1回)`),
-    el('div', { class: 'att-row' }, dateInput, attButtons(termId, key, dateInput.value, () => { renderClassAtt(); renderTimetable(); })),
-    el('button', {
-      type: 'button', class: 'btn wide small-btn',
-      onclick: () => openAttLog(key),
-    }, `出席の記録を見る・編集(${list.length}件)`),
+    el('div', { class: 'att-row' }, el('span', { class: 'small' }, '日付'), dateInput),
+    ...blocks,
+    isSplit(c) ? el('button', {
+      type: 'button', class: 'btn small-btn',
+      onclick: () => { c.halfSwap = !c.halfSwap; saveState(); refresh(); toast('前半と後半を入れ替えました'); },
+    }, '前半と後半を入れ替える') : null,
   );
 }
 
@@ -892,11 +972,12 @@ function fmtDay(ds) {
   return `${m}/${d}(${WD[new Date(y, m - 1, d).getDay()]})`;
 }
 
-function openAttLog(key) {
-  attLogKey = key;
+function openAttLog(akey) {
+  attLogKey = akey;
   attFilter = 'all';
-  const [day] = key.split('-').map(Number);
-  $('#att-add-date').value = recentDateFor(day);
+  const { unit } = findUnit(state.timetable.currentTerm, akey);
+  if (!unit) return;
+  $('#att-add-date').value = recentDateForUnit(unit);
   renderAttLog();
   if (!$('#dlg-att').open) $('#dlg-att').showModal();
 }
@@ -904,20 +985,24 @@ function openAttLog(key) {
 function renderAttLog() {
   const key = attLogKey;
   const termId = state.timetable.currentTerm;
-  const c = ttClasses()[key];
-  const [day, period] = key.split('-').map(Number);
-  $('#att-title').textContent = `${c ? c.name : ''}(${WD[day]}${period})`;
-  const sum = attSummary(termId, key, c);
+  const { c, unit } = findUnit(termId, key);
+  if (!unit) { $('#dlg-att').close(); return; }
+  const { day, period } = unit;
+  $('#att-title').textContent = `${unitLabel(unit)}(${WD[day]}${period})`;
+  const sum = attSummary(termId, unit, c);
   $('#att-stat').className = `att-head ${sum.level}`;
   $('#att-stat').replaceChildren(el('b', {}, attText(sum)),
     el('div', { class: 'small muted' }, `出席${sum.present} ・ 遅刻${sum.late} ・ 欠席${sum.absent}(全${sum.sessions}回 / 遅刻${sum.lateCount}回で欠席1回)`));
 
   // 年間予定があれば、今日までの授業日を全部並べる(記録していない日は「未記録」)
   const today = dateStr(new Date());
-  const calDates = (calClassDates(termId, day) || []).filter((x) => x <= today);
+  const calDates = (unit.dates || []).filter((x) => x <= today);
   const recs = new Map(attList(termId, key).map((r) => [r.date, r]));
   const rows = [...new Set([...calDates, ...recs.keys()])].sort().reverse()
-    .map((ds) => ({ date: ds, status: recs.has(ds) ? recs.get(ds).status : 'none', no: sessionNo(termId, day, ds) }));
+    .map((ds) => {
+      const i = unit.dates ? unit.dates.indexOf(ds) : -1;
+      return { date: ds, status: recs.has(ds) ? recs.get(ds).status : 'none', no: i >= 0 ? i + 1 : null };
+    });
   const counts = { all: rows.length, absent: sum.absent, late: sum.late, present: sum.present, none: rows.filter((r) => r.status === 'none').length };
   $('#att-filter').replaceChildren(...[['all', 'すべて'], ['absent', '欠席'], ['late', '遅刻'], ['present', '出席'], ['none', '未記録']]
     .filter(([k]) => k !== 'none' || calDates.length)
@@ -960,15 +1045,16 @@ function renderAttSummary() {
   if (!keys.length) { box.replaceChildren(); return; }
   box.replaceChildren(
     el('h3', {}, '出席のまとめ'),
-    el('div', { class: 'att-sum-list' }, ...keys.map((key) => {
+    el('div', { class: 'att-sum-list' }, ...keys.flatMap((key) => {
       const c = classes[key];
-      const [day, period] = key.split('-').map(Number);
-      const sum = attSummary(termId, key, c);
-      return el('button', { type: 'button', class: `att-sum-row ${sum.level}`, onclick: () => openAttLog(key) },
-        el('span', { class: 'att-sum-slot' }, `${WD[day]}${period}`),
-        el('span', { class: 'att-sum-name' }, c.name),
-        el('span', { class: 'att-sum-count' }, sum.total ? `欠${sum.equiv}/${sum.allowed}` : '記録なし'),
-        el('span', { class: 'att-sum-arrow' }, '›'));
+      return slotUnits(termId, key, c).map((u) => {
+        const sum = attSummary(termId, u, c);
+        return el('button', { type: 'button', class: `att-sum-row ${sum.level}`, onclick: () => openAttLog(u.akey) },
+          el('span', { class: 'att-sum-slot' }, `${WD[u.day]}${u.period}`),
+          el('span', { class: 'att-sum-name' }, unitLabel(u)),
+          el('span', { class: 'att-sum-count' }, sum.total ? `欠${sum.equiv}/${sum.allowed}` : '記録なし'),
+          el('span', { class: 'att-sum-arrow' }, '›'));
+      });
     })),
   );
 }
