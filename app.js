@@ -260,6 +260,14 @@ function render() {
       onclick: () => { taskFilter = k; render(); },
     }, `${label} ${n}`)));
 
+  // リスト / カレンダーの切り替え
+  const calMode = taskMode === 'cal';
+  document.querySelectorAll('.mode-btn').forEach((b) => b.classList.toggle('on', b.dataset.mode === taskMode));
+  $('#task-cal').hidden = !calMode;
+  $('#list-open').hidden = calMode;
+  $('#legend').classList.toggle('in-cal', calMode);
+  if (calMode) renderTaskCalendar(open, now);
+
   setKids($('#list-open'), ...GROUPS.map(([g, label]) => {
     const items = open.filter((t) => taskGroup(t, now) === g);
     if (!items.length) return null;
@@ -269,7 +277,7 @@ function render() {
   }));
   setKids($('#list-done'), ...done.map((t) => renderTask(t, now)));
 
-  $('#empty').hidden = open.length > 0;
+  $('#empty').hidden = open.length > 0 || calMode;
   $('#legend').hidden = open.length === 0;
   $('#done-section').hidden = done.length === 0;
   $('#done-count').textContent = `(${done.length})`;
@@ -1361,7 +1369,7 @@ function fillCourseSelect(sel, selected, allowEmpty) {
 let editingTaskId = null;
 
 // やることの追加・編集。id を渡すと編集(manaba の課題はメモだけ変えられる)
-function openTodo(course = '', id = null) {
+function openTodo(course = '', id = null, date = null) {
   const t = id ? state.tasks.find((x) => x.id === id) : null;
   editingTaskId = t ? t.id : null;
   const fromManaba = Boolean(t && t.source === 'manaba');
@@ -1376,7 +1384,7 @@ function openTodo(course = '', id = null) {
     f.url.value = t.url || '';
     f.memo.value = t.memo || '';
   } else {
-    f.date.value = dateStr(new Date(Date.now() + DAY));
+    f.date.value = date || dateStr(new Date(Date.now() + DAY));
   }
   f.querySelectorAll('.todo-edit').forEach((l) => { l.hidden = fromManaba; });
   // manaba の課題は入力欄を隠すので、必須チェックも外す
@@ -1603,6 +1611,84 @@ function renderClassExtra(c) {
     el('div', { class: 'class-extra-btns' },
       el('button', { type: 'button', class: 'btn small-btn', onclick: () => openTodo(course) }, '＋ やること'),
       el('button', { type: 'button', class: 'btn small-btn', onclick: () => openExam(null, course) }, '＋ 試験の予定')));
+}
+
+/* ---------- やること: カレンダー表示 ---------- */
+const MODE_KEY = 'manabaPwa.taskMode';
+let taskMode = 'list';
+try { taskMode = localStorage.getItem(MODE_KEY) || 'list'; } catch { /* ignore */ }
+let calMonth = null;   // 表示中の月の1日
+let calSelected = null; // 選んだ日 "YYYY-MM-DD"
+
+document.querySelectorAll('.mode-btn').forEach((b) => b.addEventListener('click', () => {
+  taskMode = b.dataset.mode;
+  try { localStorage.setItem(MODE_KEY, taskMode); } catch { /* ignore */ }
+  render();
+}));
+
+function renderTaskCalendar(open, now) {
+  const today = dateStr(new Date(now));
+  if (!calMonth) { const d = new Date(now); calMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
+  if (!calSelected) calSelected = today;
+  const y = calMonth.getFullYear();
+  const m = calMonth.getMonth();
+
+  // 日付ごとに課題・やること・試験をまとめる
+  const byDay = new Map();
+  const add = (ds, kind, x) => {
+    if (!byDay.has(ds)) byDay.set(ds, { tasks: [], exams: [] });
+    byDay.get(ds)[kind].push(x);
+  };
+  for (const t of open) add(dateStr(new Date(t.end)), 'tasks', t);
+  for (const x of state.exams) add(x.date, 'exams', x);
+
+  const cells = WD.map((w, i) => el('div', { class: `cal-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}` }, w));
+  const first = new Date(y, m, 1);
+  for (let i = 0; i < first.getDay(); i++) cells.push(el('div', { class: 'cal-day empty' }));
+  const days = new Date(y, m + 1, 0).getDate();
+  for (let d = 1; d <= days; d++) {
+    const date = new Date(y, m, d);
+    const ds = dateStr(date);
+    const info = byDay.get(ds) || { tasks: [], exams: [] };
+    const dayInfo = calDayInfo(date);
+    const off = dayInfo && dayInfo.type === 'off' && date.getDay() !== 0;
+    // その日の中で一番急ぎの色
+    const levels = info.tasks.map((t) => urgency(t.end, now));
+    const level = levels.includes('overdue') || levels.includes('urgent') ? 'urgent' : levels.includes('soon') ? 'soon' : '';
+    cells.push(el('button', {
+      type: 'button',
+      class: ['cal-day', ds === today ? 'today' : '', ds === calSelected ? 'sel' : '', off ? 'off' : '',
+        date.getDay() === 0 ? 'sun' : date.getDay() === 6 ? 'sat' : ''].filter(Boolean).join(' '),
+      'aria-label': `${m + 1}月${d}日 ${info.tasks.length}件${info.exams.length ? ' 試験あり' : ''}`,
+      onclick: () => { calSelected = ds; render(); },
+    },
+      el('span', { class: 'cal-num' }, d),
+      info.tasks.length ? el('span', { class: `cal-count ${level}` }, info.tasks.length) : null,
+      info.exams.length ? el('span', { class: 'cal-exam' }, '試') : null));
+  }
+
+  // 選んだ日の一覧
+  const sel = byDay.get(calSelected) || { tasks: [], exams: [] };
+  const selDate = parseYmd(calSelected);
+  const selInfo = calDayInfo(selDate);
+  setKids($('#task-cal'),
+    el('div', { class: 'cal-head' },
+      el('button', { type: 'button', class: 'cal-nav', 'aria-label': '前の月', onclick: () => { calMonth = new Date(y, m - 1, 1); render(); } }, '‹'),
+      el('b', {}, `${y}年${m + 1}月`),
+      el('button', { type: 'button', class: 'cal-nav', 'aria-label': '次の月', onclick: () => { calMonth = new Date(y, m + 1, 1); render(); } }, '›'),
+      el('button', {
+        type: 'button', class: 'link-btn',
+        onclick: () => { const d = new Date(now); calMonth = new Date(d.getFullYear(), d.getMonth(), 1); calSelected = today; render(); },
+      }, '今日')),
+    el('div', { class: 'cal-grid' }, ...cells),
+    el('div', { class: 'cal-sel-head' },
+      el('b', {}, `${fmtLongDate(selDate)}`),
+      selInfo && selInfo.label ? el('span', { class: 'small muted' }, ` ${selInfo.type === 'class' ? selInfo.label : `授業なし(${selInfo.label})`}`) : null,
+      el('button', { type: 'button', class: 'link-btn', onclick: () => openTodo('', null, calSelected) }, '＋ この日にやること')),
+    ...sel.exams.map((x) => examRow(x, new Date(now))),
+    sel.tasks.length
+      ? el('ul', { class: 'task-list' }, ...sel.tasks.sort((a, b) => a.end - b.end).map((t) => renderTask(t, now)))
+      : (sel.exams.length ? null : el('p', { class: 'small muted cal-none' }, 'この日が締切の課題・やることはありません。')));
 }
 
 /* ---------- 画面の切り替え ---------- */

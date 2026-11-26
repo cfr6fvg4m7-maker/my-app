@@ -108,3 +108,35 @@ test('manabaの課題はメモだけ書けて、取り込み直しても残る',
   await expect(page.locator('#view-tasks .task')).toContainText('11/29(日) 22:00');
   await expect(page.locator('#view-tasks .task')).toContainText('📝 Wordで提出・800字');
 });
+
+test('カレンダー表示: 日ごとの件数・試験・休講日と、選んだ日の一覧', async ({ page }) => {
+  const tasks = [
+    { id: 'a', source: 'manaba', type: 'レポート', title: '第１回レポート', course: '', url: 'https://x/1', end: at(2026, 11, 27, 18), done: false },
+    { id: 'b', source: 'todo', title: '教科書を買う', course: '', end: at(2026, 11, 27, 23, 59), allDay: true, done: false },
+    { id: 'c', source: 'todo', title: '年末の課題', course: '', end: at(2026, 12, 20, 23, 59), allDay: true, done: false },
+  ];
+  const exams = [{ id: 'e', course: '物理学概論', kind: '小テスト', date: '2026-11-30', period: 3, memo: '' }];
+  await openApp(page, { state: makeState({ tasks, exams }), hash: 'tasks', time: at(2026, 11, 26, 20) });
+  await page.click('.mode-btn[data-mode=cal]');
+  await expect(page.locator('.cal-head b')).toHaveText('2026年11月');
+  const day = (d) => page.locator('.cal-day').filter({ has: page.locator('.cal-num', { hasText: new RegExp(`^${d}$`) }) });
+  await expect(day(27).locator('.cal-count')).toHaveText('2');
+  await expect(day(27).locator('.cal-count')).toHaveClass(/urgent/);
+  await expect(day(30).locator('.cal-exam')).toHaveText('試');
+  await expect(day(2)).toHaveClass(/off/); // 11/2 学祭片付日
+  await day(27).click();
+  await expect(page.locator('.cal-sel-head')).toContainText('11月27日(金)');
+  await expect(page.locator('#task-cal .task')).toHaveCount(2);
+  // 次の月へ
+  await page.click('.cal-nav[aria-label=次の月]');
+  await expect(page.locator('.cal-head b')).toHaveText('2026年12月');
+  await expect(day(20).locator('.cal-count')).toHaveText('1');
+  // この日にやることを追加 → 日付が入っている
+  await day(20).click();
+  await page.click('.cal-sel-head .link-btn');
+  await expect(page.locator('#form-todo input[name=date]')).toHaveValue('2026-12-20');
+  // 表示の切り替えは覚えている
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.locator('#task-cal')).toBeVisible();
+});

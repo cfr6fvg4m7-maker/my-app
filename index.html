@@ -52,7 +52,12 @@
         <button type="submit" class="btn primary">追加</button>
       </div>
     </form>
+    <div class="task-mode" role="tablist">
+      <button type="button" data-mode="list" class="mode-btn on">リスト</button>
+      <button type="button" data-mode="cal" class="mode-btn">カレンダー</button>
+    </div>
     <div id="task-filter" class="att-filter"></div>
+    <section id="task-cal" class="task-cal" hidden></section>
     <p id="summary" class="summary"></p>
     <div id="legend" class="legend" hidden>
       <span><i class="chip urgent"></i>24時間以内</span>
