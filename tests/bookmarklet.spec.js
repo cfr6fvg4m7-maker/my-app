@@ -55,3 +55,18 @@ test('短いコード(本体を読み込む形)でも同じように動く', asy
   await page.waitForSelector('#manaba-pwa-overlay');
   await expect(page.locator('#manaba-pwa-overlay div').first()).toContainText('3件の課題を読み取りました');
 });
+
+test('未提出課題一覧: 各課題のページを裏で読んで、説明もまとめて入れる', async ({ page }) => {
+  await page.goto('/tests/fixtures/manaba-tasks-with-pages.html');
+  await page.evaluate((src) => { const s = document.createElement('script'); s.src = src; document.body.appendChild(s); },
+    new URL('/bookmarklet.js', page.url()).href);
+  await page.waitForSelector('#manaba-pwa-overlay');
+  await expect(page.locator('#manaba-pwa-overlay div').first()).toContainText('説明 2件も読み込みました', { timeout: 10000 });
+  const data = JSON.parse(await page.$eval('#manaba-pwa-overlay textarea', (e) => e.value));
+  const byTitle = Object.fromEntries(data.items.map((x) => [x.title, x]));
+  expect(byTitle['課題５ 教授フローチャート'].desc).toBe('授業のページの清掃のフロチャートをJPEGで提出しなさい。1枚に収めること。');
+  expect(byTitle['第１回レポート'].desc).toContain('国語教育の目的');
+  expect(byTitle['第１回レポート'].desc).toContain('\nWord形式で提出すること。'); // 段落の改行が残る
+  expect(byTitle['ページのない課題'].desc).toBeUndefined();
+  await expect(page.locator('#manaba-pwa-overlay button', { hasText: '説明は読まずにコピー' })).toHaveCount(0);
+});

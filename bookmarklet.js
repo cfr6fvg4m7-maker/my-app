@@ -222,11 +222,18 @@
     return best ? best.replace(/\n{3,}/g, '\n\n') : '';
   }
 
-  function readTaskDesc() {
-    var sel = clean(window.getSelection ? String(window.getSelection()) : '');
-    var rows = document.querySelectorAll('tr');
-    var title = '';
-    var end = '';
+  // セルの文字(改行を残す)。裏で読み込んだページは画面に出ていないので innerText が使えず、タグから改行を作る
+  function cellText(el) {
+    if (el.ownerDocument === document && el.innerText) return String(el.innerText);
+    var tmp = document.createElement('div');
+    tmp.innerHTML = el.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr|h\d)>/gi, '\n');
+    return tmp.textContent || '';
+  }
+
+  // 課題ページの表から、題名・締切・説明(「問題」「課題内容」などの行)を読む
+  function readDescRows(doc) {
+    var rows = doc.querySelectorAll('tr');
+    var r = { title: '', end: '', desc: '' };
     var exact = [];  // 見出しが「問題」「課題内容」などぴったりの行
     var parts = [];  // 見出しにそれらしい言葉を含む行
     for (var i = 0; i < rows.length; i++) {
@@ -234,22 +241,30 @@
       var cells = rows[i].querySelectorAll('th, td');
       if (cells.length < 2) continue;
       var label = clean(cells[0].textContent);
-      var cell = cells[cells.length - 1];
-      var text = String(cell.innerText || cell.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+      var text = cellText(cells[cells.length - 1]).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
       if (!text || label.length > 20) continue;
-      if (label.indexOf('タイトル') >= 0) title = clean(text);
-      else if (label.indexOf('受付終了') >= 0) end = clean(text.split('\n')[0]);
+      if (label.indexOf('タイトル') >= 0) r.title = clean(text);
+      else if (label.indexOf('受付終了') >= 0) r.end = clean(text.split('\n')[0]);
       else if (/^(問題|課題内容|課題|説明|内容|本文|課題文|指示|設問)$/.test(label)) exact.push(text);
       else if (/課題内容|説明|内容|指示|問題|本文|詳細|概要|課題文/.test(label)) parts.push(text);
     }
-    if (!title) {
+    if (!r.title) {
       // 表の一番上の1マスだけの行(「課題５ 教授フローチャート」など)を題名にする
       for (var j = 0; j < rows.length; j++) {
         var only = rows[j].querySelectorAll('th, td');
-        if (only.length === 1 && clean(only[0].textContent).length <= 60) { title = clean(only[0].textContent); break; }
+        if (only.length === 1 && clean(only[0].textContent).length <= 60) { r.title = clean(only[0].textContent); break; }
       }
     }
-    if (exact.length) parts = exact;
+    r.desc = (exact.length ? exact : parts).join('\n\n');
+    return r;
+  }
+
+  function readTaskDesc() {
+    var sel = clean(window.getSelection ? String(window.getSelection()) : '');
+    var rr = readDescRows(document);
+    var title = rr.title;
+    var end = rr.end;
+    var parts = rr.desc ? [rr.desc] : [];
     var desc = sel || parts.join('\n\n') || longestBlock();
     if (!desc) return null;
     if (!title) {
@@ -363,4 +378,42 @@
   btn('閉じる', false).onclick = function () { box.remove(); };
 
   document.body.appendChild(box);
+
+  // ---- 未提出課題一覧: 各課題のページを裏で読んで、説明(「問題」の行)もまとめて入れる ----
+  if (result.data.kind === 'tasks' && result.data.items.length && window.fetch && window.DOMParser) {
+    var items = result.data.items;
+    var stopped = false;
+    var base = result.message;
+    var stopBtn = btn('説明は読まずにコピー', false);
+    box.insertBefore(stopBtn, copyBtn.nextSibling);
+    stopBtn.onclick = function () { stopped = true; stopBtn.remove(); copyBtn.onclick(); };
+    var setJson = function () {
+      json = JSON.stringify(result.data);
+      ta.value = json;
+    };
+    var got = 0;
+    var i = 0;
+    var next = function () {
+      if (stopped) return;
+      if (i >= items.length) {
+        msg.textContent = base + '(説明 ' + got + '件も読み込みました)';
+        stopBtn.remove();
+        return;
+      }
+      var it = items[i];
+      msg.textContent = base + ' 説明を読み込み中…(' + (i + 1) + '/' + items.length + ')';
+      var done = function () { i++; setTimeout(next, 300); }; // manaba に負担をかけないよう少し間をあける
+      if (!it.url) { done(); return; }
+      fetch(it.url, { credentials: 'include' }).then(function (res) {
+        return res.ok ? res.text() : '';
+      }).then(function (html) {
+        if (html) {
+          var r = readDescRows(new DOMParser().parseFromString(html, 'text/html'));
+          if (r.desc) { it.desc = r.desc; got++; setJson(); }
+        }
+        done();
+      }, done);
+    };
+    next();
+  }
 })();

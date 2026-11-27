@@ -74,3 +74,23 @@ test('学期: 4月になると春学期に自動で切り替わり、前の学�
   expect(Object.keys(s.timetable.terms['2026-fall'].classes)).toEqual(['4-3']);
   expect(await text(page, '#term-select')).toContain('2026年度 秋学期');
 });
+
+test('説明つきの取り込み: manabaの説明は更新し、自分で書き直した説明は残す', async ({ page }) => {
+  const tasks = [
+    { id: 'https://x/a', source: 'manaba', title: 'A', course: '', url: 'https://x/a', end: at(2026, 11, 28, 22), done: false, desc: '古い説明', descFrom: 'manaba' },
+    { id: 'https://x/b', source: 'manaba', title: 'B', course: '', url: 'https://x/b', end: at(2026, 11, 28, 22), done: false, desc: '自分のメモ入り', descFrom: 'user' },
+  ];
+  await openApp(page, { state: makeState({ tasks }), hash: 'tasks' });
+  const data = { app: 'manaba-pwa', v: 1, kind: 'tasks', skipped: 0, items: [
+    { type: 'レポート', title: 'A', course: '', start: '', end: '2026-11-28 22:00', url: 'https://x/a', desc: '新しい説明' },
+    { type: 'レポート', title: 'B', course: '', start: '', end: '2026-11-28 22:00', url: 'https://x/b', desc: 'manabaの説明' },
+    { type: 'レポート', title: 'C', course: '', start: '', end: '2026-11-29 22:00', url: 'https://x/c', desc: 'Cの説明' },
+  ] };
+  await paste(page, JSON.stringify(data));
+  await expect(page.locator('#toast')).toContainText('新規1件');
+  const s = await saved(page);
+  const get = (t) => s.tasks.find((x) => x.title === t);
+  expect(get('A').desc).toBe('新しい説明');
+  expect(get('B').desc).toBe('自分のメモ入り');
+  expect(get('C')).toMatchObject({ desc: 'Cの説明', descFrom: 'manaba' });
+});

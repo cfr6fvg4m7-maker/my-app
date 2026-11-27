@@ -385,6 +385,7 @@ function parseImport(text) {
       url: it.url || '',
       start: parseManabaDate(it.start),
       end,
+      desc: it.desc ? String(it.desc) : '',
     });
   }
   return { kind: 'tasks', items, skipped: (data.skipped || 0) + bad };
@@ -421,10 +422,13 @@ function applyMerge(incoming) {
         type: it.type, title: it.title, course: it.course, url: it.url,
         start: it.start, end: it.end, missing: false,
       });
+      // 説明: 自分で書き直したもの(descFrom = user)は消さず、manaba から入れたものは新しくする
+      if (it.desc && (!t.desc || t.descFrom !== 'user')) { t.desc = it.desc; t.descFrom = 'manaba'; }
     } else {
       state.tasks.push({
         id: it.key, source: 'manaba', type: it.type, title: it.title, course: it.course,
         url: it.url, start: it.start, end: it.end,
+        desc: it.desc || '', descFrom: it.desc ? 'manaba' : undefined,
         done: false, doneAt: null, missing: false, addedAt: Date.now(),
       });
     }
@@ -1811,6 +1815,7 @@ function applyTaskDesc(p) {
     return;
   }
   t.desc = p.desc;
+  t.descFrom = 'manaba';
   saveState();
   renderAll();
   if (open) $('#form-ai').desc.value = p.desc;
@@ -1855,7 +1860,9 @@ function currentAiPrompt() {
   const t = state.tasks.find((x) => x.id === aiTaskId);
   if (!t) return null;
   // 貼った課題の内容とメモは保存しておく(次に開いたときも使える)
-  t.desc = f.desc.value.trim();
+  const desc = f.desc.value.trim();
+  if (desc !== (t.desc || '')) t.descFrom = 'user'; // 自分で書き換えた説明は、次の取り込みで上書きしない
+  t.desc = desc;
   t.aiMine = f.mine.value.trim();
   saveState();
   return aiPrompt(t, f.mode.value, t.desc, t.aiMine, f.question.value.trim());
