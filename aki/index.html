@@ -17,34 +17,33 @@
   <header class="topbar">
     <h1>空き時間</h1>
     <div class="topbar-actions">
-      <button id="btn-import" class="btn primary" type="button">取り込む</button>
+      <button id="btn-import" class="btn" type="button">↻ 取り込む</button>
       <button id="btn-settings" class="btn icon" type="button" aria-label="設定">⚙</button>
     </div>
   </header>
 
   <main>
     <section id="empty" class="card empty" hidden>
-      <h2>TimeTreeの予定から空き時間を表示します</h2>
+      <h2>TimeTreeの予定から<br>空き時間を表示します</h2>
       <ol>
-        <li>最初に1回だけ、<a href="bookmarklet.html">ブックマーク「TimeTree取込」を設定</a></li>
-        <li>上の「取り込む」→「① TimeTreeを開く」でログイン</li>
-        <li>ブックマーク「TimeTree取込」→「コピー」</li>
-        <li>このアプリに戻って「取り込む」→「② 貼り付けて取り込む」</li>
+        <li><a href="bookmarklet.html">ブックマーク「TimeTree取込」を設定</a>(最初に1回)</li>
+        <li>上の「取り込む」から、TimeTreeの予定を取り込む</li>
       </ol>
-      <p class="small muted">Googleカレンダーなどの .ics ファイルも「取り込む」から読み込めます。</p>
     </section>
 
-    <section id="summary" class="card summary" hidden></section>
+    <div id="main-ui" hidden>
+      <section id="summary" class="summary"></section>
 
-    <div class="seg" role="tablist">
-      <button type="button" data-view="week" class="on">週</button>
-      <button type="button" data-view="month">月</button>
-      <button type="button" data-view="list">リスト</button>
+      <div class="seg" role="tablist">
+        <button type="button" data-view="week" class="on">週</button>
+        <button type="button" data-view="month">月</button>
+        <button type="button" data-view="list">リスト</button>
+      </div>
+
+      <section id="panel-week" class="panel"></section>
+      <section id="panel-month" class="panel" hidden></section>
+      <section id="panel-list" class="panel" hidden></section>
     </div>
-
-    <section id="panel-week" class="panel"></section>
-    <section id="panel-month" class="panel" hidden></section>
-    <section id="panel-list" class="panel" hidden></section>
   </main>
 
   <dialog id="sheet" class="sheet">
