@@ -1912,10 +1912,10 @@ function renderCommute(now = new Date()) {
   const a = (mode, text, cls = 'btn') => el('a', { class: cls, href: mapsUrl(mode), target: '_blank', rel: 'noopener' }, text);
   setKids($('#commute'),
     el('div', { class: 'commute-head' },
-      el('b', {}, `🏫 ${CAMPUS_NAME}への行き方`),
-      el('button', { type: 'button', class: 'link-btn', onclick: openHome }, '出発地')),
+      el('b', {}, '🏫 大学への行き方'),
+      el('button', { type: 'button', class: 'link-btn', onclick: openHome }, '出発地を設定')),
     next ? el('div', { class: 'small' }, `次の授業: ${next.label} ${next.period}限 ${next.p ? next.p.start : ''}〜 ${next.c.name}`) : null,
-    el('div', { class: 'small muted' }, home ? `出発地: ${home}` : '出発地: 現在地'),
+    el('div', { class: 'small muted' }, `行き先: ${CAMPUS_NAME} ・ 出発地: ${home || '現在地'}`),
     el('div', { class: 'commute-btns' },
       a('transit', 'Googleマップで行き方を調べる(電車・バス)', 'btn primary wide'),
       a('bicycling', '自転車'),
