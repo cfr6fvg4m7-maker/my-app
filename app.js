@@ -1905,22 +1905,6 @@ function mapsArriveUrl(arrive) {
     + `/data=!4m6!4m5!2m3!6e1!7e2!8j${ts}!3e3`;
 }
 
-// Yahoo!乗換案内: 最寄りの北越谷駅に、歩く時間ぶん早く着く電車を「到着時刻」で探す
-const CAMPUS_STATION = '北越谷';
-const STATION_WALK_MIN = 10; // 北越谷駅からキャンパスまで徒歩約10分
-function yahooArriveUrl(arrive) {
-  const t = new Date(arrive.getTime() - STATION_WALK_MIN * 60000);
-  const mm = String(t.getMinutes()).padStart(2, '0');
-  const q = new URLSearchParams({
-    from: homePlace().replace(/駅$/, ''), to: CAMPUS_STATION,
-    y: String(t.getFullYear()), m: String(t.getMonth() + 1).padStart(2, '0'), d: String(t.getDate()).padStart(2, '0'),
-    hh: String(t.getHours()).padStart(2, '0'), m1: mm[0], m2: mm[1],
-    type: '4', // 4 = 到着時刻で検索
-    ticket: 'ic',
-  });
-  return `https://transit.yahoo.co.jp/search/result?${q.toString()}`;
-}
-
 // 今日このあと、または次に授業がある日の最初の授業
 function nextClassForCommute(now = new Date()) {
   const info = nowInfo(now);
@@ -1972,12 +1956,11 @@ function renderCommute(now = new Date()) {
       arriveOverride ? el('button', { type: 'button', class: 'link-btn', onclick: () => { arriveOverride = null; renderCommute(now); } }, '授業の10分前に戻す') : null),
     el('div', { class: 'commute-btns' },
       a(mapsArriveUrl(arrive), `Googleマップ(${hhmm}着で電車を調べる)`, 'btn primary wide'),
-      a(yahooArriveUrl(arrive), `Yahoo!乗換案内(北越谷駅に${STATION_WALK_MIN}分前着)`, 'btn wide'),
       a(mapsUrl('transit'), '今すぐ出る'),
       a(mapsUrl('bicycling'), '自転車'),
       a(mapsUrl('driving'), '車'),
       a(mapsUrl('walking'), '徒歩')),
-    home ? null : el('div', { class: 'small muted' }, 'Yahoo!乗換案内で調べるときは、「出発地を設定」で最寄り駅を入れておくと便利です。'));
+  );
 }
 
 function openHome() {

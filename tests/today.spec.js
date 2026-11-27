@@ -51,12 +51,10 @@ test('大学への行き方: 着きたい時刻(初期値は次の授業の10分
   await page.click('#form-home button[value=ok]');
   await page.fill('#commute input[type=time]', '13:00');
   await page.dispatchEvent('#commute input[type=time]', 'change');
-  const y = new URL(await page.locator('#commute a', { hasText: 'Yahoo' }).getAttribute('href'));
-  expect(y.origin + y.pathname).toBe('https://transit.yahoo.co.jp/search/result');
-  expect(Object.fromEntries(y.searchParams)).toMatchObject({ from: '春日部', to: '北越谷', y: '2026', m: '11', d: '26', hh: '12', m1: '5', m2: '0', type: '4' });
   const g2 = decodeURIComponent(await page.locator('#commute a.primary').getAttribute('href'));
   expect(g2).toContain('/maps/dir/春日部駅/');
   expect(g2).toContain(`!8j${Date.UTC(2026, 10, 26, 13, 0) / 1000}!`);
+  await expect(page.locator('#commute a', { hasText: 'Yahoo' })).toHaveCount(0);
   // 元に戻す
   await page.click('#commute .commute-arrive .link-btn');
   await expect(page.locator('#commute input[type=time]')).toHaveValue('09:00');
