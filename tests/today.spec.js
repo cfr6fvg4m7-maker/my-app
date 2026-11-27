@@ -32,3 +32,24 @@ test('試験: 前日は「明日」、当日は「今日の試験」', async ({ 
   await expect(page.locator('#today-exams h3').first()).toHaveText('今日の試験');
   await expect(page.locator('#today-head')).toContainText('定期試験期間');
 });
+
+test('大学への行き方: Googleマップの経路検索を開くリンクと出発地の設定', async ({ page }) => {
+  await openApp(page, { state: makeState({ classes }), time: at(2026, 11, 25, 20) }); // 水曜の夜 → 明日(木)1限
+  await expect(page.locator('#commute')).toContainText('次の授業: 明日 1限 09:10〜 英語II(AD)');
+  await expect(page.locator('#commute')).toContainText('出発地: 現在地');
+  const href = await page.locator('#commute a.primary').getAttribute('href');
+  const u = new URL(href);
+  expect(u.origin + u.pathname).toBe('https://www.google.com/maps/dir/');
+  expect(u.searchParams.get('travelmode')).toBe('transit');
+  expect(u.searchParams.get('destination')).toContain('文教大学 越谷キャンパス');
+  expect(u.searchParams.get('origin')).toBeNull();
+
+  await page.click('#commute .link-btn');
+  await page.fill('#form-home input[name=home]', '北越谷駅');
+  await page.click('#form-home button[value=ok]');
+  await expect(page.locator('#commute')).toContainText('出発地: 北越谷駅');
+  const u2 = new URL(await page.locator('#commute a.primary').getAttribute('href'));
+  expect(u2.searchParams.get('origin')).toBe('北越谷駅');
+  // 出発地はバックアップ用のデータには入れない
+  expect(JSON.stringify(await page.evaluate(() => localStorage.getItem('manabaPwa')))).not.toContain('北越谷駅');
+});

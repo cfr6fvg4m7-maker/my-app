@@ -24,6 +24,7 @@
 
   <main id="view-today" hidden>
     <div id="today-head" class="today-head"></div>
+    <section id="commute" class="commute"></section>
     <div id="today-stale" class="stale" hidden></div>
     <section id="today-exams" class="today-exams" hidden></section>
     <section id="today-pending" class="att-pending" hidden></section>
@@ -184,6 +185,19 @@
       <div class="dlg-actions">
         <button type="button" id="btn-class-clear" class="btn danger">このコマを空にする</button>
         <span class="spacer"></span>
+        <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+        <button type="submit" value="ok" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 出発地(家の住所)の設定 -->
+  <dialog id="dlg-home">
+    <form method="dialog" class="dlg" id="form-home">
+      <h2>出発地の設定</h2>
+      <p class="small muted">家の住所や最寄り駅を入れると、その場所からの行き方を調べます。空にすると、そのときの現在地から調べます。入れた住所はこのiPhoneの中にだけ保存されます(調べるときにGoogleマップに渡されます)。</p>
+      <label>出発地<input name="home" placeholder="例: 〇〇駅 / 〇〇市〇〇町1-2-3"></label>
+      <div class="dlg-actions">
         <button value="cancel" class="btn" formnovalidate>キャンセル</button>
         <button type="submit" value="ok" class="btn primary">保存</button>
       </div>

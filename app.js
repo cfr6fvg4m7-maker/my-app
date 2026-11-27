@@ -1341,6 +1341,7 @@ function renderToday() {
     el('div', { class: 'today-date' }, fmtLongDate(now)),
     el('div', { class: 'small muted' }, termLabel(termId), dayLabel ? ` ・ ${dayLabel}` : ''));
 
+  renderCommute(now);
   renderTodayExams(now);
 
   // 記録し忘れ(今日の授業は下の「今日の授業」で記録するので除く)
@@ -1875,6 +1876,65 @@ $('#form-ai').addEventListener('submit', async (ev) => {
   const url = 'https://claude.ai/new?q=' + encodeURIComponent(text);
   window.open(url, '_blank', 'noopener');
   toast('Claudeを開きました(同じ文章をコピーもしています)');
+});
+
+/* ---------- 大学への行き方(Googleマップ) ---------- */
+const CAMPUS_NAME = '文教大学 越谷キャンパス';
+const CAMPUS_ADDRESS = '埼玉県越谷市南荻島3337 文教大学 越谷キャンパス';
+const HOME_KEY = 'manabaPwa.home'; // 出発地はこの端末の中だけに置く(バックアップにも入れない)
+
+function homePlace() {
+  try { return localStorage.getItem(HOME_KEY) || ''; } catch { return ''; }
+}
+
+// Googleマップの経路検索URL(出発地が空なら現在地から)
+function mapsUrl(mode) {
+  const q = new URLSearchParams({ api: '1', destination: CAMPUS_ADDRESS, travelmode: mode });
+  const home = homePlace();
+  if (home) q.set('origin', home);
+  return `https://www.google.com/maps/dir/?${q.toString()}`;
+}
+
+// 今日このあと、または次に授業がある日の最初の授業
+function nextClassForCommute(now = new Date()) {
+  const info = nowInfo(now);
+  if (info.next) return { label: '今日', period: info.next.period, p: info.next.p, c: info.next.c };
+  const n = nextClassDay(now);
+  if (!n) return null;
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  const label = dateStr(n.date) === dateStr(tomorrow) ? '明日' : fmtLongDate(n.date);
+  return { label, period: n.first.period, p: state.timetable.periods[n.first.period - 1], c: n.first.c };
+}
+
+function renderCommute(now = new Date()) {
+  const next = nextClassForCommute(now);
+  const home = homePlace();
+  const a = (mode, text, cls = 'btn') => el('a', { class: cls, href: mapsUrl(mode), target: '_blank', rel: 'noopener' }, text);
+  setKids($('#commute'),
+    el('div', { class: 'commute-head' },
+      el('b', {}, `🏫 ${CAMPUS_NAME}への行き方`),
+      el('button', { type: 'button', class: 'link-btn', onclick: openHome }, '出発地')),
+    next ? el('div', { class: 'small' }, `次の授業: ${next.label} ${next.period}限 ${next.p ? next.p.start : ''}〜 ${next.c.name}`) : null,
+    el('div', { class: 'small muted' }, home ? `出発地: ${home}` : '出発地: 現在地'),
+    el('div', { class: 'commute-btns' },
+      a('transit', 'Googleマップで行き方を調べる(電車・バス)', 'btn primary wide'),
+      a('bicycling', '自転車'),
+      a('driving', '車'),
+      a('walking', '徒歩')));
+}
+
+function openHome() {
+  const f = $('#form-home');
+  f.home.value = homePlace();
+  $('#dlg-home').showModal();
+}
+
+$('#form-home').addEventListener('submit', (ev) => {
+  if (ev.submitter && ev.submitter.value !== 'ok') return;
+  const v = ev.target.home.value.trim();
+  try { if (v) localStorage.setItem(HOME_KEY, v); else localStorage.removeItem(HOME_KEY); } catch { /* 保存できない環境 */ }
+  renderCommute();
+  toast(v ? '出発地を保存しました' : '現在地から調べるようにしました');
 });
 
 /* ---------- 画面の切り替え ---------- */
