@@ -63,3 +63,38 @@ test('そのままClaudeに聞く: 自分の質問と課題の情報だけを送
   expect(q).not.toContain('完成した文章ではなく');
   expect(q).not.toContain('相談させてください');
 });
+
+test('課題ページから説明を取り込むと、その課題の「AIに相談」が説明入りで開く', async ({ page }) => {
+  // manaba の課題ページでブックマークを実行
+  await page.goto('/tests/fixtures/ct/course_100_report_200.html');
+  await page.evaluate((src) => { const s = document.createElement('script'); s.src = src; document.body.appendChild(s); },
+    new URL('/bookmarklet.js', page.url()).href);
+  await page.waitForSelector('#manaba-pwa-overlay');
+  await expect(page.locator('#manaba-pwa-overlay div').first()).toContainText('課題の説明を読み取りました');
+  const json = await page.$eval('#manaba-pwa-overlay textarea', (e) => e.value);
+  const data = JSON.parse(json);
+  expect(data.kind).toBe('taskdesc');
+  expect(data.desc).toContain('国語教育の目的について800字程度で論じなさい。');
+  expect(data.desc).toContain('Word形式で提出すること。');
+  expect(data.desc).not.toContain('2026-11-27'); // 日時の行は入れない
+
+  // アプリで取り込む
+  const tasks = [{ id: 'https://bunkyo-u.manaba.jp/ct/course_100_report_200', source: 'manaba', type: 'レポート', title: '第１回レポート', course: '教科概説「国語」(B2)', url: 'https://bunkyo-u.manaba.jp/ct/course_100_report_200', end: at(2026, 11, 27, 18), done: false }];
+  await openApp(page, { state: makeState({ tasks }), hash: 'tasks', time: at(2026, 11, 26, 20) });
+  await page.evaluate((v) => navigator.clipboard.writeText(v), json);
+  await page.click('#btn-import');
+  await expect(page.locator('#dlg-ai')).toBeVisible();
+  await expect(page.locator('#form-ai textarea[name=desc]')).toHaveValue(/国語教育の目的/);
+  expect((await saved(page)).tasks[0].desc).toContain('Word形式');
+  await expect(page.locator('#ai-open-task')).toHaveAttribute('href', /course_100_report_200/);
+});
+
+test('AIに相談の「コピーした内容を入れる」: ふつうの文字もそのまま入る', async ({ page }) => {
+  const tasks = [{ id: 't', source: 'todo', title: 'ゼミ発表', course: '', end: at(2026, 12, 3, 23, 59), allDay: true, done: false }];
+  await openApp(page, { state: makeState({ tasks }), hash: 'tasks' });
+  await page.locator('#view-tasks .task .ai-btn').click();
+  await expect(page.locator('#ai-open-task')).toBeHidden(); // リンクのないやることでは出さない
+  await page.evaluate(() => navigator.clipboard.writeText('発表スライド10枚、質疑5分'));
+  await page.click('#btn-ai-paste');
+  await expect(page.locator('#form-ai textarea[name=desc]')).toHaveValue('発表スライド10枚、質疑5分');
+});

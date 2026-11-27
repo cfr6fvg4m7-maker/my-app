@@ -349,6 +349,9 @@ function parseImport(text) {
   } catch {
     throw new Error('manabaのデータとして読み取れませんでした。ブックマークレットでコピーした内容を貼り付けてください。');
   }
+  if (data && data.app === 'manaba-pwa' && data.kind === 'taskdesc' && data.desc) {
+    return { kind: 'taskdesc', url: String(data.url || ''), title: String(data.title || ''), desc: String(data.desc) };
+  }
   if (data && data.app === 'manaba-pwa' && data.kind === 'rooms' && Array.isArray(data.days)) {
     const days = data.days
       .filter((x) => x && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && Array.isArray(x.entries))
@@ -448,6 +451,10 @@ function previewImport() {
     const parsed = parseImport(text);
     pendingImport = parsed;
     applyBtn.disabled = false;
+    if (parsed.kind === 'taskdesc') {
+      setKids(box, el('div', {}, `課題の説明(${parsed.desc.length}文字): ${parsed.title}`));
+      return;
+    }
     if (parsed.kind === 'rooms') {
       setKids(box, el('div', {}, `Bナビの教室: ${parsed.days.map((d) => WD[parseYmd(d.date).getDay()]).join('・')}曜の分を取り込みます`));
       return;
@@ -495,6 +502,7 @@ $('#btn-import-apply').addEventListener('click', () => {
   pendingImport = null;
   $('#dlg-import').close();
   if (parsed.kind === 'rooms') { toast(roomsResultText(applyRooms(parsed.days))); showView('timetable'); return; }
+  if (parsed.kind === 'taskdesc') { applyTaskDesc(parsed); return; }
   if (parsed.kind === 'timetable') {
     const n = applyTimetable(parsed.slots);
     toast(`時間割を取り込みました(${n}コマ)`);
@@ -1779,6 +1787,37 @@ const AI_MODES = {
 
 let aiTaskId = null;
 
+// manaba の課題ページのURLから「course_123_report_456」の部分を取り出す(一覧のURLと照らし合わせる)
+function taskPageKey(url) {
+  const m = String(url || '').match(/course_\d+_[a-z]+_\d+/);
+  return m ? m[0] : '';
+}
+
+function findTaskForDesc(p) {
+  const key = taskPageKey(p.url);
+  if (key) {
+    const t = state.tasks.find((x) => taskPageKey(x.url) === key);
+    if (t) return t;
+  }
+  return state.tasks.find((x) => !x.done && p.title && normName(x.title) === normName(p.title)) || null;
+}
+
+// 課題の説明を取り込む: その課題に保存して、「AIに相談」を開く
+function applyTaskDesc(p) {
+  const open = $('#dlg-ai').open && aiTaskId;
+  const t = open ? state.tasks.find((x) => x.id === aiTaskId) : findTaskForDesc(p);
+  if (!t) {
+    toast(`「${p.title || '課題'}」が一覧にありません。先に未提出課題一覧から取り込んでください`);
+    return;
+  }
+  t.desc = p.desc;
+  saveState();
+  renderAll();
+  if (open) $('#form-ai').desc.value = p.desc;
+  else openAi(t.id);
+  toast(`「${t.title}」の課題の内容を入れました`);
+}
+
 function aiPrompt(t, mode, desc, mine, question = '') {
   const m = AI_MODES[mode] || AI_MODES.idea;
   const direct = mode === 'direct';
@@ -1805,6 +1844,9 @@ function openAi(id) {
   f.mine.value = t.aiMine || '';
   $('#ai-q-label').hidden = true;
   setKids($('#ai-target'), el('b', {}, t.title), t.course ? ` ・ ${t.course}` : '', ` ・ 締切 ${fmtTaskDue(t)}`);
+  const link = $('#ai-open-task');
+  link.hidden = !t.url;
+  if (t.url) link.href = manabaUrl(t.url);
   $('#dlg-ai').showModal();
 }
 
@@ -1818,6 +1860,19 @@ function currentAiPrompt() {
   saveState();
   return aiPrompt(t, f.mode.value, t.desc, t.aiMine, f.question.value.trim());
 }
+
+// コピーした課題の説明(manaba取込)か、ふつうの文字を「課題の内容」に入れる
+$('#btn-ai-paste').addEventListener('click', async () => {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch { toast('貼り付けできませんでした。欄を長押しして「ペースト」してください'); return; }
+  let desc = text;
+  try {
+    const p = parseImport(text);
+    if (p.kind === 'taskdesc') desc = p.desc;
+  } catch { /* ふつうの文字 */ }
+  $('#form-ai').desc.value = desc.trim();
+  toast('課題の内容を入れました');
+});
 
 // 「そのままClaudeに聞く」を選んだときだけ質問欄を出す
 $('#ai-modes').addEventListener('change', () => {
@@ -2002,6 +2057,7 @@ async function quickImport() {
     openImport(text);
     return;
   }
+  if (parsed.kind === 'taskdesc') { applyTaskDesc(parsed); return; }
   if (parsed.kind === 'rooms') {
     toast(roomsResultText(applyRooms(parsed.days)));
     showView('timetable');

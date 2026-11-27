@@ -184,11 +184,55 @@
     };
   }
 
+  // ---- manaba の課題ページ(1つの課題の説明)----
+  // 「課題内容」「説明」などの行を読む。読めないときは、選んだ(長押しで選択した)文字を使う
+  function isTaskPage() {
+    return /course_\d+_[a-z]+_\d+/.test(location.pathname);
+  }
+
+  function readTaskDesc() {
+    var sel = clean(window.getSelection ? String(window.getSelection()) : '');
+    var rows = document.querySelectorAll('tr');
+    var title = '';
+    var end = '';
+    var parts = [];
+    for (var i = 0; i < rows.length; i++) {
+      var th = rows[i].querySelector('th');
+      var td = rows[i].querySelector('td');
+      if (!th || !td) continue;
+      var label = clean(th.textContent);
+      var text = String(td.innerText || td.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+      if (!text) continue;
+      if (label.indexOf('タイトル') >= 0) title = clean(text);
+      else if (label.indexOf('受付終了') >= 0) end = clean(text);
+      else if (/課題内容|説明|内容|指示|問題文|課題/.test(label)) parts.push(text);
+    }
+    var desc = sel || parts.join('\n\n');
+    if (!desc) return null;
+    if (!title) {
+      var h = document.querySelector('h1, h2, .pagetitle, .articletitle');
+      title = h ? clean(h.textContent) : clean(document.title);
+    }
+    return {
+      data: { app: 'manaba-pwa', v: 1, kind: 'taskdesc', at: new Date().toISOString(), url: location.href.split('#')[0], title: title, end: end, desc: desc },
+      message: (sel ? '選んだ部分を読み取りました' : '課題の説明を読み取りました') + '(' + desc.length + '文字)',
+      note: '説明がうまく読めていないときは、説明文を長押しで選んでから、もう一度「manaba取込」を押してください。'
+    };
+  }
+
   var result;
-  var taskTable = findTable();
-  var ttTable = taskTable ? null : findTimetable();
-  var roomDays = taskTable || ttTable ? null : readRoomsOfPage();
-  if (taskTable) result = readTasks(taskTable);
+  if (isTaskPage() || clean(window.getSelection ? String(window.getSelection()) : '')) {
+    result = readTaskDesc();
+    if (!result) {
+      alert('課題の説明が見つかりませんでした。\n説明文を長押しで選んでから、もう一度「manaba取込」を押してください。');
+      return;
+    }
+  }
+  var taskTable = result ? null : findTable();
+  var ttTable = taskTable || result ? null : findTimetable();
+  var roomDays = taskTable || ttTable || result ? null : readRoomsOfPage();
+  if (result) { /* 課題ページ */ }
+  else if (taskTable) result = readTasks(taskTable);
   else if (ttTable) result = readTimetable(ttTable);
   else if (roomDays && Object.keys(roomDays).length) result = readRooms(roomDays);
   else {

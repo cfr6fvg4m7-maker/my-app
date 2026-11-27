@@ -226,7 +226,12 @@
         <label><input type="radio" name="mode" value="direct"> そのままClaudeに聞く(自分で質問を書く)</label>
       </div>
       <label id="ai-q-label" hidden>質問<textarea name="question" rows="3" placeholder="例: この課題で使えそうな具体例を教えて"></textarea></label>
-      <label>課題の内容(manabaの説明を貼り付け)<textarea name="desc" rows="4" placeholder="例: ○○について、授業内容をふまえて800字で論じなさい。"></textarea></label>
+      <div class="ai-desc-tools">
+        <a id="ai-open-task" class="btn" target="_blank" rel="noopener">manabaで課題を開く</a>
+        <button type="button" id="btn-ai-paste" class="btn">コピーした内容を入れる</button>
+      </div>
+      <p class="small muted">課題のページで 📖 →「manaba取込」→「コピー」してから「コピーした内容を入れる」を押すと、説明文が入ります。</p>
+      <label>課題の内容<textarea name="desc" rows="4" placeholder="例: ○○について、授業内容をふまえて800字で論じなさい。"></textarea></label>
       <label id="ai-mine-label">自分の考え・メモ(任意)<textarea name="mine" rows="3"></textarea></label>
       <p class="small muted">AIの提案は参考にして、最後は自分で考えて書きましょう。授業によってはAIの利用にルールがあるので、シラバスや先生の指示も確認してください。</p>
       <div class="dlg-actions">
