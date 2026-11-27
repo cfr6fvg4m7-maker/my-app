@@ -359,6 +359,9 @@ function freeSlots(day, occurrences, settings, now) {
       busy.push({ s: o.s - buf, e: o.e + buf });
     }
   }
+  // その日の最初の授業から最後の授業までは学校にいる時間 → 授業の間の空きコマは空き時間に数えない
+  const span = classSpan(occurrences);
+  if (span && !settings.komaFree) busy.push(span);
   if (now != null && now > win.s) busy.push({ s: win.s, e: Math.min(now, win.e) });
   const merged = mergeIntervals(busy.map((b) => ({ s: Math.max(b.s, win.s), e: Math.min(b.e, win.e) })));
   const free = [];
@@ -372,6 +375,28 @@ function freeSlots(day, occurrences, settings, now) {
   return free.filter((f) => f.e - f.s >= Math.max(min, MIN));
 }
 
+// その日の授業(manaba)の最初の開始〜最後の終わり。授業がなければ null
+function classSpan(occurrences) {
+  const cls = occurrences.filter((o) => o.ev.cal === CLASS_CAL && !o.ev.allDay);
+  if (!cls.length) return null;
+  return { s: Math.min(...cls.map((o) => o.s)), e: Math.max(...cls.map((o) => o.e)) };
+}
+
+// 授業と授業の間の、予定の入っていない時間(空きコマ)。休み時間(10分など)のような短いすき間は除く
+const KOMA_MIN = 40;
+function komaSlots(occurrences) {
+  const span = classSpan(occurrences);
+  if (!span) return [];
+  const busy = mergeIntervals(occurrences.filter((o) => !o.ev.allDay).map((o) => ({ s: Math.max(o.s, span.s), e: Math.min(o.e, span.e) })));
+  const out = [];
+  let cur = span.s;
+  for (const b of busy) {
+    if (b.s > cur) out.push({ s: cur, e: b.s });
+    cur = Math.max(cur, b.e);
+  }
+  return out.filter((k) => k.e - k.s >= KOMA_MIN * MIN);
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { CLASS_CAL, normalizeClasses, DAY, MIN, startOfDay, addDays, dayKey, parseDayKey, hm, zonedToMs, localMidnightOf, parseIcsTime, parseRRule, expandEvent, normalizeTimeTree, parseIcs, dayWindow, mergeIntervals, freeSlots };
+  module.exports = { CLASS_CAL, normalizeClasses, DAY, MIN, startOfDay, addDays, dayKey, parseDayKey, hm, zonedToMs, localMidnightOf, parseIcsTime, parseRRule, expandEvent, normalizeTimeTree, parseIcs, dayWindow, mergeIntervals, freeSlots, classSpan, komaSlots };
 }

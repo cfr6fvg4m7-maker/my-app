@@ -17,7 +17,8 @@ const DEFAULT_SETTINGS = {
   weekend: { start: '09:00', end: '23:00' },
   minFree: 30,
   buffer: 0,
-  allDayBusy: false, // 「燃えるゴミ」などメモ的な終日予定が多いので、初期値は数えない
+  allDayBusy: false,
+  komaFree: false, // 授業と授業の間(空きコマ)は空き時間に数えない // 「燃えるゴミ」などメモ的な終日予定が多いので、初期値は数えない
 };
 
 // ---- 保存 ----
@@ -134,7 +135,8 @@ function computeDays(from, days) {
     const past = day < today;
     const free = past ? [] : freeSlots(day, list, state.settings, day === today ? t : null);
     const total = free.reduce((a, f) => a + (f.e - f.s), 0);
-    result.push({ day, win, occ: list, free, total, past });
+    const koma = past || state.settings.komaFree ? [] : komaSlots(list);
+    result.push({ day, win, occ: list, free, koma, total, past });
   }
   cache = { key, result };
   return result;
@@ -218,6 +220,11 @@ function renderWeek() {
       if (bot <= 0 || top >= h) continue;
       const ht = Math.max(12, bot - top);
       inner += `<button type="button" class="busy" data-ev="${esc(o.ev.id)}" data-s="${o.s}" style="top:${top}px;height:${ht}px" aria-label="${esc(o.ev.title)}">${ht >= 24 ? `<span>${esc(o.ev.title)}</span>` : ''}</button>`;
+    }
+    for (const k of d.koma) {
+      const top = y(d.day, k.s);
+      const ht = y(d.day, k.e) - top;
+      inner += `<button type="button" class="koma" data-day="${d.day}" style="top:${top}px;height:${ht}px" aria-label="空きコマ ${esc(hhmm(k.s))}〜${esc(hhmm(k.e))}">${ht >= 22 ? '<span>空きコマ</span>' : ''}</button>`;
     }
     for (const f of d.free) {
       const top = y(d.day, f.s);
@@ -335,8 +342,10 @@ function openDay(day) {
   const items = [];
   for (const o of d.occ) items.push({ s: o.s, e: o.e, ev: o.ev, all: o.ev.allDay });
   for (const f of d.free) items.push({ s: f.s, e: f.e, free: true });
+  for (const k of d.koma) items.push({ s: k.s, e: k.e, koma: true });
   items.sort((a, b) => (b.all ? 1 : 0) - (a.all ? 1 : 0) || a.s - b.s);
   const row = (x) => {
+    if (x.koma) return `<li class="tl tl-koma"><span class="tt">${esc(hhmm(x.s))}〜${esc(hhmm(x.e, day))}</span>空きコマ ${esc(dur(x.e - x.s))}</li>`;
     if (x.free) return `<li class="tl tl-free"><span class="tt">${esc(hhmm(x.s))}〜${esc(hhmm(x.e, day))}</span><b>空き ${esc(dur(x.e - x.s))}</b></li>`;
     const time = x.all ? '終日' : `${x.s < day ? '前日〜' : hhmm(x.s)}〜${x.e > addDays(day, 1) ? '翌日' : hhmm(x.e, day)}`;
     return `<li class="tl"><span class="tt">${esc(time)}</span><button type="button" class="link" data-ev="${esc(x.ev.id)}" data-s="${x.s}">${esc(x.ev.title)}</button> <span class="small muted">${esc(calName(x.ev.cal))}</span></li>`;
@@ -404,6 +413,7 @@ function openSettings() {
     <div class="form-row"><span>短いすき間を除く</span><select data-set="minFree">${opt([15, 30, 60, 90, 120], s.minFree, (v) => `${v}分未満`)}</select></div>
     <div class="form-row"><span>予定の前後に空ける</span><select data-set="buffer">${opt([0, 15, 30, 45, 60, 90], s.buffer, (v) => (v ? `${v}分(移動など)` : 'なし'))}</select></div>
     <label class="check"><input type="checkbox" data-set="allDayBusy" ${s.allDayBusy ? 'checked' : ''}> 終日の予定がある日は空きなしにする</label>
+    <label class="check"><input type="checkbox" data-set="komaFree" ${s.komaFree ? 'checked' : ''}> 授業と授業の間の空きコマも空き時間に数える</label>
     <h3>カレンダー</h3>
     ${cals ? `<p class="small muted">チェックを外したカレンダーの予定は、空き時間の計算に入れません(家族の予定など)。</p><ul class="cal-list">${cals}</ul>` : '<p class="small muted">まだ取り込んでいません。</p>'}
     ${ign.length ? `<h3>空きとして数える予定</h3><ul class="cal-list">${ign.map((e) => `<li><span>${esc(e.title)}</span> <button type="button" class="link small" data-unignore="${esc(e.id)}">元に戻す</button></li>`).join('')}</ul>` : ''}

@@ -253,3 +253,32 @@ test('空き時間アプリ: manabaアプリと保存場所が同じなら、時
   await expect(page.locator('#panel-week .busy', { hasText: '情報社会論' })).toHaveCount(1);
   await expect(page.locator('#panel-week .busy', { hasText: '教育課程論' })).toHaveCount(1);
 });
+
+test('授業と授業の間は「空きコマ」と表示して、空き時間には数えない(設定で数えることもできる)', async ({ page }) => {
+  const classes = {
+    '5-2': { name: '情報社会論', source: 'manaba' }, // 金2限 10:50〜12:20
+    '5-4': { name: '統計学', source: 'manaba' },     // 金4限 14:50〜16:20
+  };
+  await page.clock.install({ time: NOW });
+  await page.goto('/aki/index.html');
+  await page.evaluate((s) => { localStorage.clear(); localStorage.setItem('manabaPwa', JSON.stringify(s)); }, helpers.makeState({ classes }));
+  await page.reload();
+  // 週: 12:20〜14:50(昼休み+3限)は空きコマ
+  await expect(page.locator('#panel-week .koma')).toHaveCount(1);
+  await expect(page.locator('#panel-week .koma')).toHaveAttribute('aria-label', '空きコマ 12:20〜14:50');
+  // リスト: 今日の空きは 10:00〜10:50 と 16:20〜23:00 だけ
+  await page.click('.seg [data-view="list"]');
+  const fri = page.locator('.dlist li', { hasText: '11/27(金)' });
+  await expect(fri.locator('.slot')).toHaveCount(2);
+  await expect(fri).toContainText('10:00 〜 10:50');
+  await expect(fri).toContainText('16:20 〜 23:00');
+  // その日の詳細にも「空きコマ」
+  await fri.locator('.dl-head').click();
+  await expect(page.locator('#sheet')).toContainText('空きコマ 2時間30分');
+  await page.click('[data-close]');
+  // 設定で「空きコマも数える」にすると空き時間に入る
+  await page.click('#btn-settings');
+  await page.locator('[data-set="komaFree"]').check();
+  await page.click('[data-close]');
+  await expect(fri).toContainText('12:20 〜 14:50');
+});
