@@ -1,4 +1,6 @@
 :root {
+  --koma: #6b7fa8;
+  --koma-bg: #eef1f8;
   --seg: #e6e9e7;
   --grid: #f0f2f1;
   --chip: #eef0ef;
@@ -28,6 +30,8 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    --koma: #9fb1d6;
+    --koma-bg: #1d2230;
     --seg: #24272c;
     --grid: #23262b;
     --chip: #2a2e34;
@@ -221,3 +225,8 @@ textarea { width: 100%; font-size: 12px; border-radius: 8px; border: 1px solid v
 .more p { margin: 10px 0 4px; }
 .also { border-top: 1px solid var(--border); padding: 10px 0 4px; }
 .also p { margin: 4px 0 0; }
+.koma {
+  position: absolute; left: 2px; right: 2px; appearance: none; font: inherit; padding: 2px; cursor: pointer; overflow: hidden;
+  border: 1.5px dashed var(--koma); border-radius: 6px; background: var(--koma-bg); color: var(--koma); font-size: 9px; font-weight: 700; text-align: center; z-index: 1;
+}
+.tl.tl-koma { border-left-color: var(--koma); color: var(--koma); }
