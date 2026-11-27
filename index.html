@@ -24,16 +24,16 @@
 
   <main id="view-today" hidden>
     <div id="today-head" class="today-head"></div>
-    <section id="commute" class="commute"></section>
     <div id="today-stale" class="stale" hidden></div>
+    <section id="commute" class="commute"></section>
     <section id="today-exams" class="today-exams" hidden></section>
     <section id="today-pending" class="att-pending" hidden></section>
     <section class="today-sec">
-      <h3>今日の授業 <a class="link-btn bnavi-link" target="_blank" rel="noopener">Bナビで教室を確認 ›</a></h3>
+      <h3 class="sec-title">今日の授業 <a class="link-btn bnavi-link" target="_blank" rel="noopener">Bナビ ›</a></h3>
       <div id="today-classes"></div>
     </section>
     <section class="today-sec">
-      <h3>締切が近い課題・やること <span><button type="button" class="link-btn" data-add-todo>＋ やること</button><button type="button" class="link-btn" data-goto="tasks">すべて見る ›</button></span></h3>
+      <h3 class="sec-title">締切が近い課題・やること <button type="button" class="link-btn" data-goto="tasks">すべて ›</button></h3>
       <ul id="today-tasks" class="task-list"></ul>
     </section>
   </main>
@@ -52,6 +52,7 @@
         </label>
         <button type="submit" class="btn primary">追加</button>
       </div>
+      <button type="button" class="link-btn quick-more" data-add-todo>＋ 詳しく追加(授業・時刻・リンク・メモ)</button>
     </form>
     <div class="task-mode" role="tablist">
       <button type="button" data-mode="list" class="mode-btn on">リスト</button>
@@ -60,12 +61,7 @@
     <div id="task-filter" class="att-filter"></div>
     <section id="task-cal" class="task-cal" hidden></section>
     <p id="summary" class="summary"></p>
-    <div id="legend" class="legend" hidden>
-      <span><i class="chip urgent"></i>24時間以内</span>
-      <span><i class="chip soon"></i>3日以内</span>
-      <span><i class="chip later"></i>それより先</span>
-      <span><i class="chip overdue"></i>締切すぎ</span>
-    </div>
+    <div id="legend" hidden></div>
     <div id="list-open" class="task-groups"></div>
     <p id="empty" class="empty" hidden>
       やることはありません。<br>
@@ -77,13 +73,6 @@
       <ul id="list-done" class="task-list"></ul>
     </details>
 
-    <section class="tools">
-      <button id="btn-backup" class="btn">データのバックアップ</button>
-      <button class="btn" data-add-todo>＋ 授業を選んでやることを追加</button>
-      <button id="btn-add" class="btn">＋ 課題を手動で追加</button>
-      <a class="btn link" href="bookmarklet.html">ブックマークレットの設定</a>
-    </section>
-    <p id="last-import" class="muted small"></p>
   </main>
 
   <main id="view-timetable" hidden>
@@ -95,23 +84,54 @@
     <section id="att-pending" class="att-pending" hidden></section>
     <div id="tt-grid" class="tt-grid"></div>
     <p id="tt-credits" class="muted small"></p>
-    <section id="exam-list" class="exam-list"></section>
-    <section id="att-summary" class="att-summary"></section>
-    <div class="tt-help small">
-      <b>manabaから時間割を取り込む</b>
-      <ol>
-        <li>上の「① manabaを開く」で、manabaの「コース」を開く(表示を「<b>曜日</b>」にする)</li>
-        <li>📖 →「manaba取込」→「コピー」</li>
-        <li>アプリに戻って「② 取り込む」</li>
-      </ol>
-      <b>Bナビから教室を取り込む</b>
-      <ol>
-        <li>上の「Bナビ」を開き、HOMEの「MYスケジュール」で授業がある日付を押す</li>
-        <li>📖 →「manaba取込」(授業がある曜日の分だけ、日付を変えてくり返す)</li>
-        <li>全部の曜日がそろったら「コピー」→ アプリに戻って「② 取り込む」</li>
-      </ol>
-      <span class="muted">コマを押すと、教室・単位数などを追加したり、手で登録したりできます。</span>
-    </div>
+    <details class="fold" open>
+      <summary class="sec-title">出席のまとめ</summary>
+      <section id="att-summary" class="att-summary"></section>
+    </details>
+    <details class="fold" open>
+      <summary class="sec-title">試験の予定</summary>
+      <section id="exam-list" class="exam-list"></section>
+    </details>
+    <p class="small muted tt-hint">コマを押すと、出席の記録や教室・単位数などの入力ができます。時間割や教室の取り込みは「その他」タブから。</p>
+  </main>
+
+  <main id="view-settings" hidden>
+    <section class="set-sec">
+      <h3 class="sec-title">manaba・Bナビから取り込む</h3>
+      <p class="small muted">開いたページで 📖 →「manaba取込」→「コピー」を押し、アプリに戻って「取り込む」を押します。</p>
+      <div class="set-card">
+        <div><b>課題</b><span class="small muted"> manabaの未提出課題一覧</span></div>
+        <a class="btn" id="open-todo" target="_blank" rel="noopener">開く</a>
+      </div>
+      <div class="set-card">
+        <div><b>時間割</b><span class="small muted"> manabaの「コース」(表示は「曜日」)</span></div>
+        <a class="btn" id="open-course" target="_blank" rel="noopener">開く</a>
+      </div>
+      <div class="set-card">
+        <div><b>教室</b><span class="small muted"> Bナビの「MYスケジュール」で日付を押す。授業がある曜日の分だけくり返してからコピー</span></div>
+        <a class="btn bnavi-link" target="_blank" rel="noopener">開く</a>
+      </div>
+      <button type="button" class="btn primary wide" id="btn-import-set">取り込む(コピーしたものを読み込む)</button>
+      <p id="last-import" class="muted small"></p>
+    </section>
+
+    <section class="set-sec">
+      <h3 class="sec-title">設定</h3>
+      <a class="set-row" href="bookmarklet.html"><span>ブックマーク「manaba取込」の設定</span><span>›</span></a>
+      <button type="button" class="set-row" id="set-home"><span>大学への行き方の出発地</span><span id="set-home-value" class="muted small"></span></button>
+      <div class="set-row info"><span>出席のルール</span><span class="muted small">全15回 ・ 欠席が3分の1以上で単位なし ・ 遅刻1回=欠席1回(授業ごとに変更可)</span></div>
+      <div class="set-row info"><span>年間予定</span><span class="muted small" id="set-calendar"></span></div>
+    </section>
+
+    <section class="set-sec">
+      <h3 class="sec-title">データのバックアップ</h3>
+      <p class="small muted">課題・時間割・出席の記録を1つのファイルに保存します。機種変更のときや、データが消えたときに元に戻せます。「ファイル」アプリやiCloud Driveに保存しておくのがおすすめです。</p>
+      <button type="button" id="btn-export" class="btn primary wide">ファイルに書き出す</button>
+      <label class="btn wide file-btn">ファイルから読み込む(元に戻す)
+        <input type="file" id="file-import" accept=".json,application/json" hidden>
+      </label>
+      <p id="backup-info" class="small muted"></p>
+    </section>
   </main>
 
   <nav class="tabbar">
@@ -123,6 +143,9 @@
     </button>
     <button class="tab" data-view="timetable">
       <span class="tab-icon">▦</span>時間割<span id="tab-badge-tt" class="tab-badge" hidden></span>
+    </button>
+    <button class="tab" data-view="settings">
+      <span class="tab-icon">⋯</span>その他
     </button>
   </nav>
 
@@ -145,20 +168,6 @@
     </form>
   </dialog>
 
-  <!-- 手動追加ダイアログ -->
-  <dialog id="dlg-add">
-    <form method="dialog" class="dlg" id="form-add">
-      <h2>課題を手動で追加</h2>
-      <label>タイトル<input name="title" required></label>
-      <label>コース(任意)<input name="course"></label>
-      <label>締切<input name="end" type="datetime-local" required></label>
-      <label>リンク(任意)<input name="url" type="url" placeholder="https://"></label>
-      <div class="dlg-actions">
-        <button value="cancel" class="btn" formnovalidate>キャンセル</button>
-        <button type="submit" value="ok" class="btn primary">追加</button>
-      </div>
-    </form>
-  </dialog>
 
   <!-- 授業の登録・編集ダイアログ -->
   <dialog id="dlg-class">
@@ -298,21 +307,6 @@
     </form>
   </dialog>
 
-  <!-- バックアップ -->
-  <dialog id="dlg-backup">
-    <form method="dialog" class="dlg">
-      <h2>データのバックアップ</h2>
-      <p class="small muted">課題・時間割・出席の記録を1つのファイルに保存します。機種変更のときや、データが消えてしまったときに、このファイルから元に戻せます。「ファイル」アプリやiCloud Driveに保存しておくのがおすすめです。</p>
-      <button type="button" id="btn-export" class="btn primary wide">ファイルに書き出す</button>
-      <label class="btn wide file-btn">ファイルから読み込む(元に戻す)
-        <input type="file" id="file-import" accept=".json,application/json" hidden>
-      </label>
-      <p id="backup-info" class="small muted"></p>
-      <div class="dlg-actions">
-        <button value="cancel" class="btn">閉じる</button>
-      </div>
-    </form>
-  </dialog>
 
   <div id="toast" class="toast" hidden></div>
 

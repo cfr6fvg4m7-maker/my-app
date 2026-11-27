@@ -7,9 +7,11 @@ test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
 const tasksData = (items) => JSON.stringify({ app: 'manaba-pwa', v: 1, kind: 'tasks', items, skipped: 0 });
 const item = (title, end, url = `https://x/${encodeURIComponent(title)}`) => ({ type: 'レポート', title, course: '授業A', start: '', end, url });
 
+// コピーしたものを読み込む(「今日」「やること」は上の②、「その他」は取り込むボタン)
 async function paste(page, value) {
   await page.evaluate((v) => navigator.clipboard.writeText(v), value);
-  await page.click('#btn-import');
+  const top = page.locator('#btn-import');
+  await (await top.isVisible() ? top : page.locator('#btn-import-set')).click();
 }
 
 test('課題の取り込み: 完了は残り、消えた課題には印が付く', async ({ page }) => {
@@ -39,7 +41,7 @@ test('manabaのデータでなければ貼り付け画面が開く', async ({ pa
 test('時間割の取り込み: 表示中の学期に入り、教室などは残る', async ({ page }) => {
   page.on('dialog', (d) => d.accept());
   const classes = { '4-4': { name: '教職概論(AC)', room: 'C201', credits: 2, source: 'manaba', courses: [{ name: '教職概論(AC)', url: '' }] } };
-  await openApp(page, { state: makeState({ classes }), hash: 'timetable' });
+  await openApp(page, { state: makeState({ classes }), hash: 'settings' });
   const data = {
     app: 'manaba-pwa', v: 1, kind: 'timetable',
     slots: [

@@ -462,3 +462,35 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .commute-head .link-btn { white-space: nowrap; }
 .commute-arrive { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .commute-arrive .att-date { font-size: 15px; padding: 5px 6px; }
+
+/* ---------- 整理(見出し・その他タブ・折りたたみ) ---------- */
+.sec-title { font-size: 15px; font-weight: 700; margin: 0 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fold { margin: 14px 4px 0; }
+.fold > summary { cursor: pointer; list-style: none; padding: 4px 0; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after { content: '▾'; color: var(--muted); font-size: 13px; }
+.fold:not([open]) > summary::after { content: '▸'; }
+.fold .att-summary, .fold .exam-list { margin: 0; }
+.fold .att-summary h3, .fold .exam-list h3 { display: none; }
+.tt-hint { margin: 14px 4px 0; }
+.quick-more { justify-self: start; padding: 0; }
+.set-sec { margin-bottom: 22px; display: grid; gap: 8px; }
+.set-sec p { margin: 0; }
+.set-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px;
+}
+.set-card .btn { flex: none; }
+.set-row {
+  appearance: none; font: inherit; color: var(--text); text-align: left; text-decoration: none; cursor: pointer; width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+}
+.set-row span:last-child { text-align: right; }
+.commute-head { flex-wrap: wrap; }
+.commute-more summary { cursor: pointer; color: var(--primary); margin-top: 6px; }
+.commute-more[open] { display: grid; gap: 6px; }
+.commute-from { display: flex; align-items: center; gap: 4px; }
+.exam-add { padding: 0 0 6px; }
+.set-row.info { flex-direction: column; align-items: flex-start; gap: 2px; cursor: default; }
+.set-row.info span:last-child { text-align: left; }

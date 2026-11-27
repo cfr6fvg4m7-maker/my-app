@@ -53,8 +53,7 @@ test('授業を選んでやること・試験を追加し、コマの画面に�
 
 test('バックアップを書き出して、消えたデータを元に戻せる', async ({ page }) => {
   const tasks = [{ id: 'a', source: 'todo', title: '残したいやること', course: '', end: at(2026, 11, 30, 23, 59), allDay: true, done: false }];
-  await openApp(page, { state: makeState({ tasks }), hash: 'tasks' });
-  await page.click('#btn-backup');
+  await openApp(page, { state: makeState({ tasks }), hash: 'settings' });
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-export')]);
   expect(download.suggestedFilename()).toBe('manaba-backup-2026-11-26.json');
   // ファイルの中身をそのまま渡す(保存先のパスに日本語が入ると読み込めない環境があるため)
@@ -63,7 +62,6 @@ test('バックアップを書き出して、消えたデータを元に戻せ�
   await page.evaluate(() => localStorage.removeItem('manabaPwa'));
   await page.reload();
   await expect(page.locator('#view-tasks .task')).toHaveCount(0);
-  await page.click('#btn-backup');
   await page.setInputFiles('#file-import', { name: 'backup.json', mimeType: 'application/json', buffer });
   await expect(page.locator('#view-tasks .task .title')).toHaveText('残したいやること');
 });

@@ -35,29 +35,42 @@ test('試験: 前日は「明日」、当日は「今日の試験」', async ({ 
 
 test('大学への行き方: 着きたい時刻(初期値は次の授業の10分前)で調べるリンク', async ({ page }) => {
   await openApp(page, { state: makeState({ classes }), time: at(2026, 11, 25, 20) }); // 水曜の夜 → 明日(木)1限
-  await expect(page.locator('#commute')).toContainText('次の授業: 明日 1限 09:10〜 英語II(AD)');
-  await expect(page.locator('#commute input[type=time]')).toHaveValue('09:00');
-  await expect(page.locator('#commute input[type=date]')).toHaveValue('2026-11-26');
-
-  // 2026/11/26 09:00 を UTC とみなした秒 = 1795683600、6e1 = 到着、3e3 = 電車
-  const g = decodeURIComponent(await page.locator('#commute a.primary').getAttribute('href'));
+  await expect(page.locator('#commute .commute-head')).toContainText('次: 明日 1限 09:10〜');
+  const main = page.locator('#commute a.primary');
+  await expect(main).toHaveText('明日 09:00着で電車を調べる(Googleマップ)');
+  // 2026/11/26 09:00 を UTC とみなした秒、6e1 = 到着、3e3 = 電車
+  const g = decodeURIComponent(await main.getAttribute('href'));
   expect(g.startsWith('https://www.google.com/maps/dir//')).toBe(true); // 出発地が空 = 現在地
   expect(g).toContain('文教大学 越谷キャンパス');
   expect(g).toContain(`!6e1!7e2!8j${Date.UTC(2026, 10, 26, 9, 0) / 1000}!3e3`);
 
-  // 出発地(駅)を入れて、時刻を変える
-  await page.click('#commute .commute-head .link-btn');
+  // くわしく: 出発地と時刻を変える
+  await page.click('#commute .commute-more summary');
+  await expect(page.locator('#commute input[type=time]')).toHaveValue('09:00');
+  await page.click('#commute .commute-from .link-btn');
   await page.fill('#form-home input[name=home]', '春日部駅');
   await page.click('#form-home button[value=ok]');
+  await expect(page.locator('#commute .commute-from')).toContainText('春日部駅');
   await page.fill('#commute input[type=time]', '13:00');
   await page.dispatchEvent('#commute input[type=time]', 'change');
-  const g2 = decodeURIComponent(await page.locator('#commute a.primary').getAttribute('href'));
+  await expect(main).toHaveText('明日 13:00着で電車を調べる(Googleマップ)');
+  const g2 = decodeURIComponent(await main.getAttribute('href'));
   expect(g2).toContain('/maps/dir/春日部駅/');
   expect(g2).toContain(`!8j${Date.UTC(2026, 10, 26, 13, 0) / 1000}!`);
-  await expect(page.locator('#commute a', { hasText: 'Yahoo' })).toHaveCount(0);
   // 元に戻す
   await page.click('#commute .commute-arrive .link-btn');
   await expect(page.locator('#commute input[type=time]')).toHaveValue('09:00');
   // 出発地はバックアップ用のデータには入れない
   expect(JSON.stringify(await page.evaluate(() => localStorage.getItem('manabaPwa')))).not.toContain('春日部');
+});
+
+test('その他タブ: 取り込みの入口・設定・バックアップがまとまっている', async ({ page }) => {
+  await openApp(page, { state: makeState(), hash: 'settings' });
+  await expect(page.locator('#page-title')).toHaveText('その他');
+  await expect(page.locator('.topbar-actions')).toBeHidden();
+  await expect(page.locator('#open-todo')).toHaveAttribute('href', /home_library_query/);
+  await expect(page.locator('#open-course')).toHaveAttribute('href', /home_course/);
+  await expect(page.locator('#set-calendar')).toContainText('2026年度');
+  await page.click('.tab[data-view=tasks]');
+  await expect(page.locator('.topbar-actions')).toBeVisible();
 });

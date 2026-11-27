@@ -337,41 +337,6 @@ function toast(msg) {
   toast.timer = setTimeout(() => { t.hidden = true; }, 2500);
 }
 
-/* ---------- 手動追加 ---------- */
-
-function openAdd() {
-  const f = $('#form-add');
-  f.reset();
-  // 初期値: 明日の 23:59
-  const d = new Date(Date.now() + DAY);
-  d.setHours(23, 59, 0, 0);
-  f.end.value = toLocalInputValue(d.getTime());
-  $('#dlg-add').showModal();
-}
-
-$('#form-add').addEventListener('submit', (ev) => {
-  if (ev.submitter && ev.submitter.value !== 'ok') return;
-  const f = ev.target;
-  const end = new Date(f.end.value).getTime();
-  if (!f.title.value.trim() || isNaN(end)) return;
-  state.tasks.push({
-    id: 'm:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    source: 'manual',
-    type: '',
-    title: f.title.value.trim(),
-    course: f.course.value.trim(),
-    url: f.url.value.trim(),
-    start: null,
-    end,
-    done: false,
-    doneAt: null,
-    missing: false,
-    addedAt: Date.now(),
-  });
-  saveState();
-  renderAll();
-  toast('追加しました');
-});
 
 /* ---------- manaba 取り込み ---------- */
 
@@ -1285,7 +1250,6 @@ async function importBackup(file) {
   state = migrate(data.data);
   saveState();
   renderAll();
-  $('#dlg-backup').close();
   toast('バックアップから元に戻しました');
 }
 
@@ -1295,7 +1259,6 @@ function renderBackupInfo() {
     : 'まだ書き出したことはありません。';
 }
 
-$('#btn-backup').addEventListener('click', () => { renderBackupInfo(); $('#dlg-backup').showModal(); });
 $('#btn-export').addEventListener('click', exportBackup);
 $('#file-import').addEventListener('change', (ev) => {
   const f = ev.target.files && ev.target.files[0];
@@ -1644,7 +1607,7 @@ function examRow(x, now = new Date()) {
 function renderExamList() {
   const up = upcomingExams();
   setKids($('#exam-list'),
-    el('h3', {}, '試験の予定 ', el('button', { type: 'button', class: 'link-btn', onclick: () => openExam() }, '＋ 追加')),
+    el('button', { type: 'button', class: 'link-btn exam-add', onclick: () => openExam() }, '＋ 試験の予定を追加'),
     up.length ? el('div', { class: 'exam-rows' }, ...up.map((x) => examRow(x)))
       : el('p', { class: 'small muted' }, 'まだ登録されていません。コマを押した画面や「＋ 追加」から登録できます。'));
 }
@@ -1928,6 +1891,8 @@ function defaultArrive(next, now) {
   return d;
 }
 
+let commuteOpen = false;
+
 function renderCommute(now = new Date()) {
   const next = nextClassForCommute(now);
   const home = homePlace();
@@ -1945,22 +1910,27 @@ function renderCommute(now = new Date()) {
   };
   dateIn.onchange = onChange;
   timeIn.onchange = onChange;
-  setKids($('#commute'),
-    el('div', { class: 'commute-head' },
-      el('b', {}, '🏫 大学への行き方'),
-      el('button', { type: 'button', class: 'link-btn', onclick: openHome }, '出発地を設定')),
-    next ? el('div', { class: 'small' }, `次の授業: ${next.label} ${next.period}限 ${next.p ? next.p.start : ''}〜 ${next.c.name}`) : null,
-    el('div', { class: 'small muted' }, `行き先: ${CAMPUS_NAME} ・ 出発地: ${home || '現在地'}`),
+  const day = dateStr(arrive) === dateStr(now) ? '今日' : next && dateStr(arrive) === dateStr(next.date) ? next.label : fmtDay(dateStr(arrive));
+  const more = el('details', { class: 'commute-more', open: commuteOpen },
+    el('summary', { class: 'small' }, 'くわしく(着く時刻・ほかの行き方・出発地)'),
     el('div', { class: 'commute-arrive' },
       el('span', { class: 'small' }, '着きたい時刻'), dateIn, timeIn,
       arriveOverride ? el('button', { type: 'button', class: 'link-btn', onclick: () => { arriveOverride = null; renderCommute(now); } }, '授業の10分前に戻す') : null),
     el('div', { class: 'commute-btns' },
-      a(mapsArriveUrl(arrive), `Googleマップ(${hhmm}着で電車を調べる)`, 'btn primary wide'),
       a(mapsUrl('transit'), '今すぐ出る'),
       a(mapsUrl('bicycling'), '自転車'),
       a(mapsUrl('driving'), '車'),
       a(mapsUrl('walking'), '徒歩')),
-  );
+    el('div', { class: 'small muted commute-from' },
+      `出発地: ${home || '現在地'} `,
+      el('button', { type: 'button', class: 'link-btn', onclick: openHome }, '変更')));
+  more.addEventListener('toggle', () => { commuteOpen = more.open; });
+  setKids($('#commute'),
+    el('div', { class: 'commute-head' },
+      el('b', {}, '🏫 大学への行き方'),
+      next ? el('span', { class: 'small muted' }, `次: ${next.label} ${next.period}限 ${next.p ? next.p.start : ''}〜`) : null),
+    a(mapsArriveUrl(arrive), `${day} ${hhmm}着で電車を調べる(Googleマップ)`, 'btn primary wide'),
+    more);
 }
 
 function openHome() {
@@ -1973,7 +1943,7 @@ $('#form-home').addEventListener('submit', (ev) => {
   if (ev.submitter && ev.submitter.value !== 'ok') return;
   const v = ev.target.home.value.trim();
   try { if (v) localStorage.setItem(HOME_KEY, v); else localStorage.removeItem(HOME_KEY); } catch { /* 保存できない環境 */ }
-  renderCommute();
+  renderAll();
   toast(v ? '出発地を保存しました' : '現在地から調べるようにしました');
 });
 
@@ -1983,14 +1953,15 @@ const TAB_KEY = 'manabaPwa.tab';
 let currentView = 'tasks';
 try { currentView = localStorage.getItem(TAB_KEY) || 'tasks'; } catch { /* ignore */ }
 
-const VIEWS = { today: '今日', tasks: 'やること', timetable: '時間割' };
+const VIEWS = { today: '今日', tasks: 'やること', timetable: '時間割', settings: 'その他' };
 
 function showView(view) {
   currentView = VIEWS[view] ? view : 'today';
   try { localStorage.setItem(TAB_KEY, currentView); } catch { /* ignore */ }
   for (const v of Object.keys(VIEWS)) $(`#view-${v}`).hidden = currentView !== v;
-  // 時間割画面では ① で manaba のコース一覧(曜日表示)を開く
-  $('#btn-open-manaba').href = manabaUrl(currentView === 'timetable' ? MANABA_COURSE_URL : MANABA_TODO_URL);
+  // ① manabaを開く / ② 取り込む は、課題を扱う「今日」「やること」だけに出す
+  $('#btn-open-manaba').href = manabaUrl(MANABA_TODO_URL);
+  $('.topbar-actions').hidden = !(currentView === 'today' || currentView === 'tasks');
   $('#page-title').textContent = VIEWS[currentView];
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.view === currentView));
   renderAll();
@@ -2005,6 +1976,7 @@ function renderAll() {
   render();
   renderTimetable();
   renderToday();
+  renderSettings();
   const urgent = state.tasks.filter((t) => !t.done && urgency(t.end, Date.now()) === 'urgent').length;
   const badge = $('#tab-badge');
   badge.hidden = !urgent;
@@ -2050,12 +2022,24 @@ async function quickImport() {
 }
 
 $('#btn-import').addEventListener('click', quickImport);
+$('#btn-import-set').addEventListener('click', quickImport);
+$('#open-todo').href = manabaUrl(MANABA_TODO_URL);
+$('#open-course').href = manabaUrl(MANABA_COURSE_URL);
+$('#set-home').addEventListener('click', () => openHome());
+
+// 「その他」タブ
+function renderSettings() {
+  $('#set-home-value').textContent = homePlace() || '現在地(未設定)';
+  const terms = Object.keys(ACADEMIC_CALENDAR);
+  const years = [...new Set(terms.map((t) => t.split('-')[0]))];
+  $('#set-calendar').textContent = `${years.map((y) => `${y}年度`).join('・')} 越谷キャンパス学部(授業日・休講日・試験期間)`;
+  renderBackupInfo();
+}
 
 
-$('#btn-add').addEventListener('click', openAdd);
 
 // アプリを開いたら、いつも「今日」から(#tasks / #timetable で直接開くこともできる)
-showView(({ '#tasks': 'tasks', '#timetable': 'timetable' })[location.hash] || 'today');
+showView(({ '#tasks': 'tasks', '#timetable': 'timetable', '#settings': 'settings' })[location.hash] || 'today');
 checkHashImport();
 window.addEventListener('hashchange', checkHashImport);
 setInterval(renderAll, 60 * 1000);
