@@ -250,6 +250,24 @@ function normalizeTimeTree(data) {
   return { calendars, events };
 }
 
+// manaba課題アプリの「空き時間アプリに送る」→ 予定の配列(カレンダー「授業」1つ)
+const CLASS_CAL = 'mb:classes';
+function normalizeClasses(data) {
+  const events = [];
+  for (const x of data.items || []) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date) || !x.start || !x.end) continue;
+    const day = parseDayKey(x.date);
+    const s = day + hm(x.start) * MIN;
+    const e = day + hm(x.end) * MIN;
+    if (e <= s) continue;
+    events.push({
+      id: `mb:${x.date}-${x.period}${x.exam ? 'x' : ''}`, cal: CLASS_CAL, title: x.title || `${x.period}限`, allDay: false, s, e,
+      note: [x.period ? `${x.period}限` : '', x.room ? `教室: ${x.room}` : ''].filter(Boolean).join(' ・ ') || undefined,
+    });
+  }
+  return { calendars: [{ id: CLASS_CAL, name: '授業(manaba)', source: 'manaba' }], events };
+}
+
 // ICS ファイルの中身 → { calendars, events }(ファイル1つ = カレンダー1つ)
 function parseIcs(text, calId, fallbackName) {
   const lines = String(text).replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '').split('\n');
@@ -355,5 +373,5 @@ function freeSlots(day, occurrences, settings, now) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { DAY, MIN, startOfDay, addDays, dayKey, parseDayKey, hm, zonedToMs, localMidnightOf, parseIcsTime, parseRRule, expandEvent, normalizeTimeTree, parseIcs, dayWindow, mergeIntervals, freeSlots };
+  module.exports = { CLASS_CAL, normalizeClasses, DAY, MIN, startOfDay, addDays, dayKey, parseDayKey, hm, zonedToMs, localMidnightOf, parseIcsTime, parseRRule, expandEvent, normalizeTimeTree, parseIcs, dayWindow, mergeIntervals, freeSlots };
 }

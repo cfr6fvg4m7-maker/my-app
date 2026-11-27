@@ -190,3 +190,66 @@ test('月の表示: 日ごとの空き時間と、押すとその日の予定', 
   await expect(page.locator('#sheet')).toContainText('家族で外食');
   await expect(page.locator('#sheet')).toContainText('空き 9時間');
 });
+
+// ---- manaba課題アプリの授業を入れる ----
+const helpers = require('./helpers');
+const CLASSES = {
+  '5-2': { name: '情報社会論', room: '7201', source: 'manaba' }, // 金2限 10:50〜12:20
+  '1-1': { name: '教育課程論', room: '', source: 'manaba' },     // 月1限 9:10〜10:40
+};
+
+test('manabaアプリ: 時間割から授業の時間をコピーする(休講日は入れない)', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await helpers.openApp(page, { time: NOW, state: helpers.makeState({ classes: CLASSES }), hash: 'timetable' });
+  await page.click('#btn-send-aki');
+  await expect(page.locator('#toast')).toContainText('コピーしました');
+  const data = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(data.kind).toBe('aki-classes');
+  const fri = data.items.filter((x) => x.title === '情報社会論');
+  expect(fri[0]).toMatchObject({ date: '2026-11-27', start: '10:50', end: '12:20', period: 2, room: '7201' });
+  // 冬季休業(12/25〜1/7)と 1/15(休講日)の金曜は入らない
+  expect(fri.map((x) => x.date)).not.toContain('2027-01-01');
+  expect(fri.map((x) => x.date)).not.toContain('2027-01-15');
+  expect(fri.map((x) => x.date)).toContain('2027-01-08');
+  // 前の日より前は入らない
+  expect(data.items.every((x) => x.date >= '2026-11-26')).toBe(true);
+});
+
+test('空き時間アプリ: コピーした授業を取り込むと予定になり、カレンダーとして外せる', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await helpers.openApp(page, { time: NOW, state: helpers.makeState({ classes: CLASSES }), hash: 'timetable' });
+  await page.click('#btn-send-aki');
+  const json = await page.evaluate(() => navigator.clipboard.readText());
+
+  await openApp(page);
+  await page.click('#btn-import');
+  await page.click('#paste-import');
+  await expect(page.locator('#toast')).toContainText('授業の時間を取り込みました');
+  // 今日(金)は 10:00〜10:50 と 12:20〜23:00 が空き
+  await page.click('.seg [data-view="list"]');
+  const fri = page.locator('.dlist li', { hasText: '11/27(金)' });
+  await expect(fri).toContainText('10:00 〜 10:50');
+  await expect(fri).toContainText('12:20 〜 23:00');
+  // 予定を押すと教室も見られる
+  await page.click('.seg [data-view="week"]');
+  await page.locator('#panel-week .busy', { hasText: '情報社会論' }).first().click();
+  await expect(page.locator('#sheet')).toContainText('2限 ・ 教室: 7201');
+  await page.click('[data-close]');
+  // 授業のカレンダーを外すと、今日は全部空き
+  await page.click('#btn-settings');
+  await page.locator('[data-cal="mb:classes"]').uncheck();
+  await page.click('[data-close]');
+  await page.click('.seg [data-view="list"]');
+  await expect(fri).toContainText('10:00 〜 23:00');
+  // TimeTreeの取り込み日時は変わらない(授業だけでは「取り込み」扱いにしない)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('akiJikan')).importedAt)).toBeNull();
+});
+
+test('空き時間アプリ: manabaアプリと保存場所が同じなら、時間割を自動で読む', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  await page.goto('/aki/index.html');
+  await page.evaluate((s) => { localStorage.clear(); localStorage.setItem('manabaPwa', JSON.stringify(s)); }, helpers.makeState({ classes: CLASSES }));
+  await page.reload();
+  await expect(page.locator('#panel-week .busy', { hasText: '情報社会論' })).toHaveCount(1);
+  await expect(page.locator('#panel-week .busy', { hasText: '教育課程論' })).toHaveCount(1);
+});

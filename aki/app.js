@@ -33,6 +33,8 @@ function load() {
     events: Array.isArray(s.events) ? s.events : [],
     ignored: s.ignored && typeof s.ignored === 'object' ? s.ignored : {},
     importedAt: s.importedAt || null,
+    classesAt: s.classesAt || null,
+    classesSig: s.classesSig || null,
     settings: {
       ...DEFAULT_SETTINGS, ...(s.settings || {}),
       weekday: { ...DEFAULT_SETTINGS.weekday, ...((s.settings || {}).weekday || {}) },
@@ -69,9 +71,11 @@ function dur(ms) {
   return r ? `${h}時間${r}分` : `${h}時間`;
 }
 function hoursShort(ms) {
-  const h = ms / 3600000;
-  if (h <= 0) return '0';
-  return (Math.round(h * 2) / 2).toString().replace(/\.0$/, '');
+  // 1時間未満は分で、それ以上は30分単位で切り捨て(長く見せない)
+  const m = Math.round(ms / MIN);
+  if (m <= 0) return '0h';
+  if (m < 60) return `${m}分`;
+  return `${(Math.floor(m / 30) / 2).toString()}h`;
 }
 function relDay(day) {
   const n = Math.round((day - startOfDay(now())) / DAY);
@@ -218,7 +222,7 @@ function renderWeek() {
     for (const f of d.free) {
       const top = y(d.day, f.s);
       const ht = y(d.day, f.e) - top;
-      inner += `<button type="button" class="free" data-day="${d.day}" style="top:${top}px;height:${ht}px" aria-label="空き ${esc(hhmm(f.s))}〜${esc(hhmm(f.e, d.day))}">${ht >= 22 ? `<span>${esc(hoursShort(f.e - f.s))}h</span>` : ''}</button>`;
+      inner += `<button type="button" class="free" data-day="${d.day}" style="top:${top}px;height:${ht}px" aria-label="空き ${esc(hhmm(f.s))}〜${esc(hhmm(f.e, d.day))}">${ht >= 22 ? `<span>${esc(hoursShort(f.e - f.s))}</span>` : ''}</button>`;
     }
     if (d.day === today) {
       const ny = y(d.day, now());
@@ -270,7 +274,7 @@ function renderMonth() {
     const lv = d.past ? 'p' : d.total === 0 ? 0 : ratio < 0.34 ? 1 : ratio < 0.67 ? 2 : 3;
     cells += `<button type="button" class="mcell lv${lv}${d.day === today ? ' today' : ''}" data-day="${d.day}">
       <span class="mdn">${dt.getDate()}</span>
-      <span class="mh">${d.past ? '' : d.total ? `${esc(hoursShort(d.total))}h` : '–'}</span>
+      <span class="mh">${d.past ? '' : d.total ? esc(hoursShort(d.total)) : '–'}</span>
     </button>`;
   }
   el.innerHTML = `
@@ -354,6 +358,7 @@ function openEvent(id, s) {
   openSheet('予定', `
     <p class="ev-title">${esc(ev.title)}</p>
     <p>${esc(when)}${ev.rec ? ' <span class="small muted">(くり返し)</span>' : ''}</p>
+    ${ev.note ? `<p class="small">${esc(ev.note)}</p>` : ''}
     <p class="small muted">カレンダー: ${esc(calName(ev.cal))}</p>
     <label class="check"><input type="checkbox" data-ignore="${esc(ev.id)}" ${state.ignored[ev.id] ? 'checked' : ''}> この予定があっても「空き」として数える</label>
     <p class="small muted">「リマインダー的な予定」「行かなくてもいい予定」などに使います。くり返しの予定は全部の回が対象です。</p>`);
@@ -366,6 +371,10 @@ function openImport() {
       <li>ブックマーク「<b>TimeTree取込</b>」→「<b>コピー</b>」</li>
       <li><button type="button" class="btn primary wide" id="paste-import">貼り付けて取り込む</button></li>
     </ol>
+    <div class="also">
+      <b>manabaの授業も入れる</b>
+      <p class="small muted">manaba課題アプリの「時間割」→「授業の時間を『空き時間』アプリに送る」を押してから、上の「貼り付けて取り込む」。${state.classesAt ? `(前回: ${esc(md(state.classesAt))})` : ''}</p>
+    </div>
     <details class="more">
       <summary>うまくいかないとき・その他</summary>
       <p><a href="bookmarklet.html">ブックマーク「TimeTree取込」の設定</a></p>
@@ -404,7 +413,7 @@ function openSettings() {
 }
 
 // ---- 取り込み ----
-function applyImport(cals, events, replace) {
+function applyImport(cals, events, replace, { timetree = true } = {}) {
   // replace(cal) が true のカレンダーの予定を入れ替える。チェックの状態は引き継ぐ
   const prevUse = Object.fromEntries(state.calendars.map((c) => [c.id, c.use]));
   state.calendars = state.calendars.filter((c) => !replace(c.id) && !cals.some((n) => n.id === c.id));
@@ -414,7 +423,7 @@ function applyImport(cals, events, replace) {
   // もう存在しない予定の「空きとして数える」は消す
   const ids = new Set(state.events.map((e) => e.id));
   for (const id of Object.keys(state.ignored)) if (!ids.has(id)) delete state.ignored[id];
-  state.importedAt = now();
+  if (timetree) state.importedAt = now();
   save();
 }
 
@@ -422,8 +431,18 @@ function importText(text) {
   let data;
   try { data = JSON.parse(String(text).trim()); } catch { data = null; }
   if (!data && /BEGIN:VCALENDAR/.test(text)) { importIcs(text, 'ics:paste', '貼り付けたカレンダー'); return true; }
+  if (data && data.kind === 'aki-classes') {
+    const { calendars, events } = normalizeClasses(data);
+    applyImport(calendars, events, (id) => id === CLASS_CAL, { timetree: false });
+    state.classesAt = now();
+    save();
+    closeSheet();
+    render();
+    toast(`授業の時間を取り込みました(${events.length}回分)`);
+    return true;
+  }
   if (!data || data.kind !== 'aki-timetree') {
-    toast('TimeTreeのデータではありません。ブックマーク「TimeTree取込」で「コピー」してから押してください');
+    toast('取り込めるデータではありません。TimeTreeのブックマークか、manabaアプリの「空き時間アプリに送る」でコピーしてから押してください');
     return false;
   }
   const { calendars, events } = normalizeTimeTree(data);
@@ -534,6 +553,25 @@ function importFromHash() {
   try { importText(decodeURIComponent(m[1])); } catch { toast('取り込めませんでした'); }
 }
 
+// manaba課題アプリと保存場所が同じとき(Safari・パソコンなど)は、時間割を自動で読む。
+// iPhoneのホーム画面アプリどうしは保存場所が別なので、そのときはコピー&貼り付けで渡す。
+function syncClassesFromManaba() {
+  if (typeof classEventsForAki !== 'function') return;
+  let mb = null;
+  try { mb = JSON.parse(localStorage.getItem('manabaPwa')); } catch { mb = null; }
+  if (!mb || !mb.timetable) return;
+  const items = classEventsForAki(mb, dayKey(addDays(startOfDay(now()), -1)));
+  if (!items.length) return;
+  const sig = hashId(JSON.stringify(items.map((x) => [x.date, x.start, x.end, x.title, x.room])));
+  if (sig === state.classesSig && state.calendars.some((c) => c.id === CLASS_CAL)) return;
+  const { calendars, events } = normalizeClasses({ items });
+  applyImport(calendars, events, (id) => id === CLASS_CAL, { timetree: false });
+  state.classesAt = now();
+  state.classesSig = sig;
+  save();
+}
+
+syncClassesFromManaba();
 render();
 importFromHash();
 // 時間がたつと「これから」の空きが変わるので、1分ごと・画面に戻ったときに描き直す

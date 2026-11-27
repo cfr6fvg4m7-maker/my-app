@@ -473,6 +473,8 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .fold .att-summary, .fold .exam-list { margin: 0; }
 .fold .att-summary h3, .fold .exam-list h3 { display: none; }
 .tt-hint { margin: 14px 4px 0; }
+.aki-send { margin-top: 14px; }
+.aki-send p { margin: 6px 4px 0; }
 .quick-more { justify-self: start; padding: 0; }
 .set-sec { margin-bottom: 22px; display: grid; gap: 8px; }
 .set-sec p { margin: 0; }

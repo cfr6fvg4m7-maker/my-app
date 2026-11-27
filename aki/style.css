@@ -219,3 +219,5 @@ textarea { width: 100%; font-size: 12px; border-radius: 8px; border: 1px solid v
 .more { border-top: 1px solid var(--border); padding-top: 10px; }
 .more summary { color: var(--muted); font-size: 14px; cursor: pointer; }
 .more p { margin: 10px 0 4px; }
+.also { border-top: 1px solid var(--border); padding: 10px 0 4px; }
+.also p { margin: 4px 0 0; }
