@@ -224,6 +224,7 @@ function renderTask(t, now) {
     ),
     el('div', { class: 'task-actions' },
       el('button', { class: 'edit', 'aria-label': '編集', onclick: () => openTodo('', t.id) }, '✎'),
+      t.done ? null : el('button', { class: 'ai-btn', 'aria-label': 'AIに相談', onclick: () => openAi(t.id) }, '💡'),
       el('button', { class: 'del', 'aria-label': '削除', onclick: () => deleteTask(t.id) }, '×')),
   );
 }
@@ -1758,6 +1759,113 @@ function renderTaskCalendar(open, now) {
       ? el('ul', { class: 'task-list' }, ...sel.tasks.sort((a, b) => a.end - b.end).map((t) => renderTask(t, now)))
       : (sel.exams.length ? null : el('p', { class: 'small muted cal-none' }, 'この日が締切の課題・やることはありません。')));
 }
+
+// クリップボードにコピー(使えないときは選択してコピーする昔の方法)
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = el('textarea', { readonly: true, style: 'position:fixed;top:0;left:0;opacity:0' });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+/* ---------- AIに相談(Claude を開いて、頼み方の文章を渡す) ---------- */
+// サーバーもAPIキーも使わない: 文章を作ってコピーし、claude.ai の新しい会話を開く
+const AI_MODES = {
+  idea: {
+    label: '回答の方向性を提案',
+    ask: [
+      'この課題について、回答の方向性を提案してください。私はこれを参考に自分で考えて書くので、そのまま提出できる完成した文章ではなく、次の形で箇条書き中心にまとめてください。',
+      '1. 課題が求めていることの整理',
+      '2. 考えられる主張・論点の案を2〜3個(それぞれ根拠や具体例の候補も)',
+      '3. 構成の案(見出しと、各段落で書くことを1行ずつ)',
+      '4. 調べるとよいキーワードや資料の種類',
+      '5. 書くときに気をつけること',
+    ],
+  },
+  outline: {
+    label: '構成案を作る',
+    ask: [
+      'この課題のレポートの構成案を作ってください。本文は書かずに、見出しと、各段落で書く内容・使えそうな根拠の種類を短く示してください。字数の指定があれば、段落ごとの字数の目安も付けてください。',
+    ],
+  },
+  review: {
+    label: '下書きを読んでアドバイス',
+    ask: [
+      '下の「自分の考え・メモ」は私が書いた下書きです。書き直した文章は示さずに、良い点、分かりにくい点、論理が飛んでいる所、課題の求めに合っていない所、足すとよい観点を、箇条書きで具体的に指摘してください。',
+    ],
+  },
+  plan: {
+    label: '進め方の計画',
+    ask: [
+      'この課題を締切までに終わらせるための進め方を、今日から締切までの日ごとのやることとして提案してください。調べる・考える・書く・見直すの時間配分も入れてください。',
+    ],
+  },
+};
+
+let aiTaskId = null;
+
+function aiPrompt(t, mode, desc, mine) {
+  const m = AI_MODES[mode] || AI_MODES.idea;
+  const lines = [
+    '大学の課題について相談させてください。',
+    '',
+    `【課題名】${t.title}`,
+    t.course ? `【授業】${t.course}` : null,
+    `【締切】${fmtTaskDue(t)}(今日は${fmtLongDate(new Date())})`,
+    desc ? `【課題の内容】\n${desc}` : '【課題の内容】(manabaの説明をここに貼ってください)',
+    mine ? `【自分の考え・メモ】\n${mine}` : null,
+    '',
+    ...m.ask,
+  ];
+  return lines.filter((x) => x !== null).join('\n');
+}
+
+function openAi(id) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t) return;
+  aiTaskId = id;
+  const f = $('#form-ai');
+  f.reset();
+  f.desc.value = t.desc || '';
+  f.mine.value = t.aiMine || '';
+  setKids($('#ai-target'), el('b', {}, t.title), t.course ? ` ・ ${t.course}` : '', ` ・ 締切 ${fmtTaskDue(t)}`);
+  $('#dlg-ai').showModal();
+}
+
+function currentAiPrompt() {
+  const f = $('#form-ai');
+  const t = state.tasks.find((x) => x.id === aiTaskId);
+  if (!t) return null;
+  // 貼った課題の内容とメモは保存しておく(次に開いたときも使える)
+  t.desc = f.desc.value.trim();
+  t.aiMine = f.mine.value.trim();
+  saveState();
+  return aiPrompt(t, f.mode.value, t.desc, t.aiMine);
+}
+
+$('#btn-ai-copy').addEventListener('click', async () => {
+  const text = currentAiPrompt();
+  if (text && await copyText(text)) toast('コピーしました。Claudeに貼り付けてください');
+});
+
+$('#form-ai').addEventListener('submit', async (ev) => {
+  if (ev.submitter && ev.submitter.value !== 'ok') return;
+  const text = currentAiPrompt();
+  if (!text) return;
+  await copyText(text); // 入力欄にうまく入らなかったときは、貼り付けで使える
+  const url = 'https://claude.ai/new?q=' + encodeURIComponent(text);
+  window.open(url, '_blank', 'noopener');
+  toast('Claudeを開きました(同じ文章をコピーもしています)');
+});
 
 /* ---------- 画面の切り替え ---------- */
 

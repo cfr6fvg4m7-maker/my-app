@@ -446,3 +446,9 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .cal-legend .sw.exam-period { background: var(--exam-bg); border-color: var(--exam-bar); }
 .cal-legend .sw.off { background: var(--overdue-bg); }
 .cal-exam-key { color: var(--urgent-text); font-size: 11px; }
+
+/* ---------- AIに相談 ---------- */
+.ai-modes { display: grid; gap: 4px; }
+.ai-modes label { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.ai-modes input { width: auto; }
+.task .ai-btn { appearance: none; border: none; background: none; font-size: 16px; line-height: 1; padding: 2px 4px; cursor: pointer; }
