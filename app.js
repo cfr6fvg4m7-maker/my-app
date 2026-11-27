@@ -1272,6 +1272,16 @@ function renderBackupInfo() {
 }
 
 $('#btn-export').addEventListener('click', exportBackup);
+
+/* ---------- 空き時間アプリ(aki/)に授業の時間を送る ---------- */
+// ホーム画面アプリどうしは保存場所が別なので、クリップボード経由で渡す
+$('#btn-send-aki').addEventListener('click', async () => {
+  const today = new Date();
+  const items = classEventsForAki(state, ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)));
+  if (!items.length) { toast('送る授業がありません。先に時間割を取り込んでください'); return; }
+  const ok = await copyText(JSON.stringify({ kind: 'aki-classes', v: 1, at: Date.now(), items }));
+  toast(ok ? `授業・試験 ${items.length}回分をコピーしました。「空き時間」アプリで取り込んでください` : 'コピーできませんでした');
+});
 $('#file-import').addEventListener('change', (ev) => {
   const f = ev.target.files && ev.target.files[0];
   ev.target.value = '';

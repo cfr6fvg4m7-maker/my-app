@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS = {
   weekend: { start: '09:00', end: '23:00' },
   minFree: 30,
   buffer: 0,
-  allDayBusy: true,
+  allDayBusy: false, // 「燃えるゴミ」などメモ的な終日予定が多いので、初期値は数えない
 };
 
 // ---- 保存 ----
@@ -25,18 +25,22 @@ function load() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch { s = null; }
   if (!s || typeof s !== 'object') s = {};
+  // v1 → v2: 終日の予定で一日中「空きなし」になりやすかったので、初期値を変えた
+  if (s.settings && (s.version || 1) < 2) s.settings.allDayBusy = false;
   return {
-    version: 1,
+    version: 2,
     calendars: Array.isArray(s.calendars) ? s.calendars : [],
     events: Array.isArray(s.events) ? s.events : [],
     ignored: s.ignored && typeof s.ignored === 'object' ? s.ignored : {},
     importedAt: s.importedAt || null,
+    classesAt: s.classesAt || null,
+    classesSig: s.classesSig || null,
     settings: {
       ...DEFAULT_SETTINGS, ...(s.settings || {}),
       weekday: { ...DEFAULT_SETTINGS.weekday, ...((s.settings || {}).weekday || {}) },
       weekend: { ...DEFAULT_SETTINGS.weekend, ...((s.settings || {}).weekend || {}) },
     },
-    ui: { view: 'week', listMin: 60, ...(s.ui || {}) },
+    ui: { view: 'week', listMin: 0, ...(s.ui || {}) },
   };
 }
 let state = load();
@@ -67,9 +71,11 @@ function dur(ms) {
   return r ? `${h}時間${r}分` : `${h}時間`;
 }
 function hoursShort(ms) {
-  const h = ms / 3600000;
-  if (h <= 0) return '0';
-  return (Math.round(h * 2) / 2).toString().replace(/\.0$/, '');
+  // 1時間未満は分で、それ以上は30分単位で切り捨て(長く見せない)
+  const m = Math.round(ms / MIN);
+  if (m <= 0) return '0h';
+  if (m < 60) return `${m}分`;
+  return `${(Math.floor(m / 30) / 2).toString()}h`;
 }
 function relDay(day) {
   const n = Math.round((day - startOfDay(now())) / DAY);
@@ -140,6 +146,8 @@ function calName(id) { const c = state.calendars.find((x) => x.id === id); retur
 function render() {
   const has = state.events.length > 0 || state.calendars.length > 0;
   $('#empty').hidden = has;
+  $('#main-ui').hidden = !has;
+  if (!has) return;
   renderSummary();
   for (const b of document.querySelectorAll('.seg button')) b.classList.toggle('on', b.dataset.view === state.ui.view);
   for (const v of ['week', 'month', 'list']) $(`#panel-${v}`).hidden = state.ui.view !== v;
@@ -150,8 +158,6 @@ function render() {
 
 function renderSummary() {
   const el = $('#summary');
-  if (!state.importedAt) { el.hidden = true; return; }
-  el.hidden = false;
   const t = now();
   const today = startOfDay(t);
   const days = computeDays(today, 14);
@@ -161,23 +167,22 @@ function renderSummary() {
     const f = d.free.find((x) => x.e > t);
     if (f) { next = { d, f }; break; }
   }
-  const ago = t - state.importedAt;
-  const agoText = ago < 3600000 ? `${Math.max(1, Math.round(ago / MIN))}分前` : ago < DAY ? `${Math.round(ago / 3600000)}時間前` : `${Math.round(ago / DAY)}日前`;
+  const nowFree = next && next.f.s <= t + MIN; // 「今から」の空きは開始が今の時刻になる
+  let sub;
+  if (!next) sub = '2週間以内に空きはありません';
+  else if (nowFree) sub = `いま空いています(${hhmm(next.f.e, next.d.day)}まで)`;
+  else sub = `次の空き: ${relDay(next.d.day) || md(next.d.day)} ${hhmm(next.f.s)}〜${hhmm(next.f.e, next.d.day)}`;
+  const stale = state.importedAt && t - state.importedAt > 3 * DAY;
   el.innerHTML = `
-    <div class="sum-row">
-      <div>
-        <div class="sum-label">今日 ${esc(md(today))} の空き(これから)</div>
-        <div class="sum-big">${d0.total ? esc(dur(d0.total)) : 'なし'}</div>
-      </div>
-      <div class="sum-next">
-        <div class="sum-label">次の空き</div>
-        ${next ? `<button type="button" class="link" data-day="${next.d.day}">${esc(relDay(next.d.day) || md(next.d.day))} ${esc(hhmm(next.f.s))}〜${esc(hhmm(next.f.e, next.d.day))}<br><span class="small">(${esc(dur(next.f.e - next.f.s))})</span></button>` : '<span class="muted">2週間以内になし</span>'}
-      </div>
-    </div>
-    <div class="small ${ago > 3 * DAY ? 'warn' : 'muted'}">TimeTreeの取り込み: ${esc(agoText)}${ago > 3 * DAY ? '(予定が変わっているかもしれません。取り込み直してください)' : ''}</div>`;
+    <button type="button" class="sum" data-day="${next ? next.d.day : today}">
+      <span class="sum-label">今日の空き</span>
+      <span class="sum-big">${d0.total ? `あと ${esc(dur(d0.total))}` : 'なし'}</span>
+      <span class="sum-sub">${esc(sub)}</span>
+    </button>
+    ${stale ? `<button type="button" class="stale" data-open="import">最後の取り込みから${Math.floor((t - state.importedAt) / DAY)}日たちました。取り込み直す ›</button>` : ''}`;
 }
 
-// ---- 週 ----
+// ---- 週(今日から7日) ----
 function hourRange() {
   const s = state.settings;
   const a = Math.min(hm(s.weekday.start), hm(s.weekend.start));
@@ -187,22 +192,21 @@ function hourRange() {
 }
 function renderWeek() {
   const el = $('#panel-week');
-  const ws = addDays(weekStart(now()), (state.ui.weekOffset || 0) * 7);
+  const today = startOfDay(now());
+  const ws = addDays(today, (state.ui.weekOffset || 0) * 7);
   const days = computeDays(ws, 7);
   const { from, to } = hourRange();
   const h = (to - from) * HOUR_PX;
   const y = (day, t) => ((t - day) / MIN / 60 - from) * HOUR_PX;
-  const today = startOfDay(now());
-  const weekTotal = days.reduce((a, d) => a + d.total, 0);
 
   let hours = '';
-  for (let i = from; i <= to; i++) hours += `<div class="hr" style="top:${(i - from) * HOUR_PX}px">${i}</div>`;
+  for (let i = from; i < to; i += 2) hours += `<div class="hr" style="top:${(i - from) * HOUR_PX}px">${i}時</div>`;
   let lines = '';
-  for (let i = from + 1; i < to; i++) lines += `<div class="hline" style="top:${(i - from) * HOUR_PX}px"></div>`;
+  for (let i = from + 2; i < to; i += 2) lines += `<div class="hline" style="top:${(i - from) * HOUR_PX}px"></div>`;
+  const anyAllDay = days.some((d) => d.occ.some((o) => o.ev.allDay));
 
   const cols = days.map((d) => {
     let inner = lines;
-    // 時間帯の外(早朝・深夜)は薄く
     const ws0 = y(d.day, d.win.s);
     const we0 = y(d.day, d.win.e);
     if (ws0 > 0) inner += `<div class="off" style="top:0;height:${ws0}px"></div>`;
@@ -212,12 +216,13 @@ function renderWeek() {
       const top = Math.max(0, y(d.day, Math.max(o.s, d.day)));
       const bot = Math.min(h, y(d.day, Math.min(o.e, addDays(d.day, 1))));
       if (bot <= 0 || top >= h) continue;
-      inner += `<button type="button" class="busy" data-ev="${esc(o.ev.id)}" data-s="${o.s}" style="top:${top}px;height:${Math.max(14, bot - top)}px"><span>${esc(o.ev.title)}</span></button>`;
+      const ht = Math.max(12, bot - top);
+      inner += `<button type="button" class="busy" data-ev="${esc(o.ev.id)}" data-s="${o.s}" style="top:${top}px;height:${ht}px" aria-label="${esc(o.ev.title)}">${ht >= 24 ? `<span>${esc(o.ev.title)}</span>` : ''}</button>`;
     }
     for (const f of d.free) {
       const top = y(d.day, f.s);
       const ht = y(d.day, f.e) - top;
-      inner += `<button type="button" class="free" data-day="${d.day}" style="top:${top}px;height:${ht}px">${ht >= 30 ? `<span>${esc(hhmm(f.s))}<br>${esc(hoursShort(f.e - f.s))}h</span>` : ''}</button>`;
+      inner += `<button type="button" class="free" data-day="${d.day}" style="top:${top}px;height:${ht}px" aria-label="空き ${esc(hhmm(f.s))}〜${esc(hhmm(f.e, d.day))}">${ht >= 22 ? `<span>${esc(hoursShort(f.e - f.s))}</span>` : ''}</button>`;
     }
     if (d.day === today) {
       const ny = y(d.day, now());
@@ -226,33 +231,26 @@ function renderWeek() {
     const allDay = d.occ.filter((o) => o.ev.allDay);
     const wd = new Date(d.day).getDay();
     return `
-      <div class="wcol${d.past ? ' past' : ''}">
+      <div class="wcol">
         <button type="button" class="whead${d.day === today ? ' today' : ''}${wd === 0 ? ' sun' : wd === 6 ? ' sat' : ''}" data-day="${d.day}">
           <span class="wd">${WEEK[wd]}</span><span class="dn">${new Date(d.day).getDate()}</span>
-          <span class="wt">${d.past ? '' : `${esc(hoursShort(d.total))}h`}</span>
         </button>
-        <div class="allday">${allDay.map((o) => `<button type="button" class="chip" data-ev="${esc(o.ev.id)}" data-s="${o.s}">${esc(o.ev.title)}</button>`).join('')}</div>
+        ${anyAllDay ? `<div class="allday">${allDay.length ? `<button type="button" class="chip" data-day="${d.day}">${esc(allDay[0].ev.title)}${allDay.length > 1 ? ` +${allDay.length - 1}` : ''}</button>` : ''}</div>` : ''}
         <div class="wbody" style="height:${h}px">${inner}</div>
       </div>`;
   }).join('');
 
   el.innerHTML = `
     <div class="nav">
-      <button type="button" class="btn" data-week="-1" aria-label="前の週">‹</button>
-      <button type="button" class="nav-title" data-week="0">${esc(md(ws))} 〜 ${esc(md(addDays(ws, 6)))}</button>
-      <button type="button" class="btn" data-week="1" aria-label="次の週">›</button>
+      <button type="button" class="nav-btn" data-week="-1" aria-label="前の7日"${state.ui.weekOffset > 0 ? '' : ' disabled'}>‹</button>
+      <button type="button" class="nav-title" data-week="0">${state.ui.weekOffset ? esc(`${md(ws)} 〜`) : '今日から1週間'}</button>
+      <button type="button" class="nav-btn" data-week="1" aria-label="次の7日">›</button>
     </div>
-    <p class="small muted center">この週の空き: <b>${esc(dur(weekTotal))}</b>(${state.settings.minFree}分以上のすき間)</p>
     <div class="week">
-      <div class="hours"><div class="whead-sp"></div><div class="allday-sp"></div><div class="hcol" style="height:${h}px">${hours}</div></div>
+      <div class="hours"><div class="whead-sp"></div>${anyAllDay ? '<div class="allday"></div>' : ''}<div class="hcol" style="height:${h}px">${hours}</div></div>
       ${cols}
     </div>
-    <div class="legend"><span class="lg lg-free"></span>空き <span class="lg lg-busy"></span>予定 <span class="lg lg-off"></span>時間外(設定で変更)</div>`;
-  // 全日の行の高さをそろえる
-  const ad = el.querySelectorAll('.allday');
-  const mh = Math.max(0, ...[...ad].map((x) => x.scrollHeight));
-  for (const x of ad) x.style.height = `${mh}px`;
-  el.querySelector('.allday-sp').style.height = `${mh}px`;
+    <p class="hint">緑が空き時間。押すとその日の詳細</p>`;
 }
 
 // ---- 月 ----
@@ -261,35 +259,36 @@ function renderMonth() {
   const base = new Date(now());
   const m0 = new Date(base.getFullYear(), base.getMonth() + (state.ui.monthOffset || 0), 1).getTime();
   const gridStart = weekStart(m0);
-  const days = computeDays(gridStart, 42);
   const month = new Date(m0).getMonth();
+  const lastDay = new Date(new Date(m0).getFullYear(), month + 1, 0).getTime();
+  const weeks = Math.ceil((daysBetween(gridStart, lastDay) + 1) / 7);
+  const days = computeDays(gridStart, weeks * 7);
   const today = startOfDay(now());
   let cells = '';
   for (const d of days) {
     const dt = new Date(d.day);
     const inMonth = dt.getMonth() === month;
+    if (!inMonth) { cells += '<div class="mcell blank"></div>'; continue; }
     const winLen = Math.max(1, d.win.e - d.win.s);
     const ratio = d.total / winLen;
-    const lv = d.past ? 'p' : d.total === 0 ? 0 : ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : 4;
-    const busyN = d.occ.length;
-    cells += `<button type="button" class="mcell lv${lv}${inMonth ? '' : ' out'}${d.day === today ? ' today' : ''}" data-day="${d.day}">
+    const lv = d.past ? 'p' : d.total === 0 ? 0 : ratio < 0.34 ? 1 : ratio < 0.67 ? 2 : 3;
+    cells += `<button type="button" class="mcell lv${lv}${d.day === today ? ' today' : ''}" data-day="${d.day}">
       <span class="mdn">${dt.getDate()}</span>
-      <span class="mh">${d.past ? '' : `${esc(hoursShort(d.total))}h`}</span>
-      ${busyN ? `<span class="mdots">${'•'.repeat(Math.min(busyN, 4))}</span>` : ''}
+      <span class="mh">${d.past ? '' : d.total ? esc(hoursShort(d.total)) : '–'}</span>
     </button>`;
   }
   el.innerHTML = `
     <div class="nav">
-      <button type="button" class="btn" data-month="-1" aria-label="前の月">‹</button>
+      <button type="button" class="nav-btn" data-month="-1" aria-label="前の月">‹</button>
       <button type="button" class="nav-title" data-month="0">${new Date(m0).getFullYear()}年${month + 1}月</button>
-      <button type="button" class="btn" data-month="1" aria-label="次の月">›</button>
+      <button type="button" class="nav-btn" data-month="1" aria-label="次の月">›</button>
     </div>
     <div class="mgrid">${['月', '火', '水', '木', '金', '土', '日'].map((w) => `<div class="mwd">${w}</div>`).join('')}${cells}</div>
-    <div class="legend">空きの多さ: <span class="lg lv0"></span>なし <span class="lg lv1"></span> <span class="lg lv2"></span> <span class="lg lv3"></span> <span class="lg lv4"></span>多い ・数字は空きの時間</div>`;
+    <p class="hint">数字は空いている時間。緑が濃いほど空いています</p>`;
 }
 
 // ---- リスト ----
-const LIST_MINS = [30, 60, 120, 180, 240];
+const LIST_MINS = [0, 60, 180];
 function filteredDays(min) {
   return computeDays(startOfDay(now()), 14).map((d) => ({ ...d, free: d.free.filter((f) => f.e - f.s >= min * MIN) }));
 }
@@ -304,21 +303,22 @@ function shareText(days) {
 }
 function renderList() {
   const el = $('#panel-list');
-  const min = state.ui.listMin || 60;
+  const min = LIST_MINS.includes(state.ui.listMin) ? state.ui.listMin : 0;
   const days = filteredDays(min);
+  const label = (m) => (m ? `${m / 60}時間以上` : 'すべて');
   el.innerHTML = `
-    <div class="chips">${LIST_MINS.map((m) => `<button type="button" class="fchip${m === min ? ' on' : ''}" data-min="${m}">${m < 60 ? `${m}分` : `${m / 60}時間`}以上</button>`).join('')}</div>
+    <div class="chips">${LIST_MINS.map((m) => `<button type="button" class="fchip${m === min ? ' on' : ''}" data-min="${m}">${label(m)}</button>`).join('')}</div>
     <ul class="dlist">
-      ${days.map((d) => `
+      ${days.map((d) => (d.free.length ? `
         <li>
           <button type="button" class="dl-head" data-day="${d.day}">
-            <span>${esc(md(d.day))} <span class="small muted">${esc(relDay(d.day))}</span></span>
-            <span class="small ${d.free.length ? '' : 'muted'}">${d.free.length ? `計 ${esc(dur(d.free.reduce((a, f) => a + f.e - f.s, 0)))}` : '空きなし'}</span>
+            <span>${esc(md(d.day))}${relDay(d.day) ? ` <span class="rel">${esc(relDay(d.day))}</span>` : ''}</span>
           </button>
-          ${d.free.map((f) => `<div class="slot"><span class="bar" style="width:${Math.min(100, ((f.e - f.s) / (d.win.e - d.win.s)) * 100)}%"></span><span class="st">${esc(hhmm(f.s))}〜${esc(hhmm(f.e, d.day))}</span><span class="sd">${esc(dur(f.e - f.s))}</span></div>`).join('')}
-        </li>`).join('')}
+          ${d.free.map((f) => `<div class="slot"><span class="st">${esc(hhmm(f.s))} 〜 ${esc(hhmm(f.e, d.day))}</span><span class="sd">${esc(dur(f.e - f.s))}</span></div>`).join('')}
+        </li>` : `
+        <li class="none"><button type="button" class="dl-head" data-day="${d.day}"><span>${esc(md(d.day))}${relDay(d.day) ? ` <span class="rel">${esc(relDay(d.day))}</span>` : ''}</span><span>空きなし</span></button></li>`)).join('')}
     </ul>
-    <button type="button" class="btn primary wide" id="copy-list">この空き時間をコピー(LINEなどに貼れます)</button>`;
+    <button type="button" class="btn primary wide" id="copy-list">空き時間をコピーして送る</button>`;
 }
 
 // ---- シート(下から出る画面) ----
@@ -343,7 +343,6 @@ function openDay(day) {
   };
   const text = shareText([d]);
   openSheet(`${md(day)}${relDay(day) ? `(${relDay(day)})` : ''}`, `
-    <p class="small muted">空き時間を数える時間帯: ${esc(hhmm(d.win.s))}〜${esc(hhmm(d.win.e, day))}</p>
     <ul class="timeline">${items.length ? items.map(row).join('') : '<li class="muted">予定も空きもありません</li>'}</ul>
     ${text ? `<button type="button" class="btn primary wide" data-copy="${esc(text)}">この日の空き時間をコピー</button>` : ''}`);
 }
@@ -359,6 +358,7 @@ function openEvent(id, s) {
   openSheet('予定', `
     <p class="ev-title">${esc(ev.title)}</p>
     <p>${esc(when)}${ev.rec ? ' <span class="small muted">(くり返し)</span>' : ''}</p>
+    ${ev.note ? `<p class="small">${esc(ev.note)}</p>` : ''}
     <p class="small muted">カレンダー: ${esc(calName(ev.cal))}</p>
     <label class="check"><input type="checkbox" data-ignore="${esc(ev.id)}" ${state.ignored[ev.id] ? 'checked' : ''}> この予定があっても「空き」として数える</label>
     <p class="small muted">「リマインダー的な予定」「行かなくてもいい予定」などに使います。くり返しの予定は全部の回が対象です。</p>`);
@@ -366,20 +366,24 @@ function openEvent(id, s) {
 
 function openImport() {
   openSheet('予定を取り込む', `
-    <h3>TimeTreeから</h3>
     <ol class="steps">
-      <li><a class="btn wide" href="${timetreeLink()}" target="_blank" rel="noopener">① TimeTreeを開く</a><span class="small muted">SafariでTimeTreeのカレンダーが開きます(ログインを求められたらログイン)</span></li>
-      <li>ブックマークから「<b>TimeTree取込</b>」→「<b>コピー</b>」<br><a class="small" href="bookmarklet.html">ブックマークの設定(最初に1回だけ)</a></li>
-      <li><button type="button" class="btn primary wide" id="paste-import">② 貼り付けて取り込む</button><span class="small muted">「ペースト」の確認が出たら押してください</span></li>
+      <li><a class="btn wide" href="${timetreeLink()}" target="_blank" rel="noopener">TimeTreeを開く</a></li>
+      <li>ブックマーク「<b>TimeTree取込</b>」→「<b>コピー</b>」</li>
+      <li><button type="button" class="btn primary wide" id="paste-import">貼り付けて取り込む</button></li>
     </ol>
-    <details>
-      <summary class="small muted">うまく貼り付けられないとき</summary>
-      <textarea id="paste-area" rows="4" placeholder="ここを長押しして「ペースト」"></textarea>
+    <div class="also">
+      <b>manabaの授業も入れる</b>
+      <p class="small muted">manaba課題アプリの「時間割」→「授業の時間を『空き時間』アプリに送る」を押してから、上の「貼り付けて取り込む」。${state.classesAt ? `(前回: ${esc(md(state.classesAt))})` : ''}</p>
+    </div>
+    <details class="more">
+      <summary>うまくいかないとき・その他</summary>
+      <p><a href="bookmarklet.html">ブックマーク「TimeTree取込」の設定</a></p>
+      <p class="small muted">貼り付けできないときは、ここに長押しで「ペースト」:</p>
+      <textarea id="paste-area" rows="3"></textarea>
       <button type="button" class="btn wide" id="paste-area-import">この内容で取り込む</button>
-    </details>
-    <h3>ファイルから(.ics)</h3>
-    <p class="small muted">Googleカレンダー・iPhoneのカレンダーなどから書き出した .ics ファイルも読み込めます。ファイルごとに1つのカレンダーとして追加されます(同じ名前のファイルは置き換え)。</p>
-    <label class="btn wide file-btn">📄 .ics ファイルを選ぶ<input type="file" id="ics-file" accept=".ics,text/calendar" multiple hidden></label>`);
+      <p class="small muted">Googleカレンダーなどの .ics ファイルも読み込めます。</p>
+      <label class="btn wide file-btn">.ics ファイルを選ぶ<input type="file" id="ics-file" accept=".ics,text/calendar" multiple hidden></label>
+    </details>`);
 }
 
 function openSettings() {
@@ -409,7 +413,7 @@ function openSettings() {
 }
 
 // ---- 取り込み ----
-function applyImport(cals, events, replace) {
+function applyImport(cals, events, replace, { timetree = true } = {}) {
   // replace(cal) が true のカレンダーの予定を入れ替える。チェックの状態は引き継ぐ
   const prevUse = Object.fromEntries(state.calendars.map((c) => [c.id, c.use]));
   state.calendars = state.calendars.filter((c) => !replace(c.id) && !cals.some((n) => n.id === c.id));
@@ -419,7 +423,7 @@ function applyImport(cals, events, replace) {
   // もう存在しない予定の「空きとして数える」は消す
   const ids = new Set(state.events.map((e) => e.id));
   for (const id of Object.keys(state.ignored)) if (!ids.has(id)) delete state.ignored[id];
-  state.importedAt = now();
+  if (timetree) state.importedAt = now();
   save();
 }
 
@@ -427,8 +431,18 @@ function importText(text) {
   let data;
   try { data = JSON.parse(String(text).trim()); } catch { data = null; }
   if (!data && /BEGIN:VCALENDAR/.test(text)) { importIcs(text, 'ics:paste', '貼り付けたカレンダー'); return true; }
+  if (data && data.kind === 'aki-classes') {
+    const { calendars, events } = normalizeClasses(data);
+    applyImport(calendars, events, (id) => id === CLASS_CAL, { timetree: false });
+    state.classesAt = now();
+    save();
+    closeSheet();
+    render();
+    toast(`授業の時間を取り込みました(${events.length}回分)`);
+    return true;
+  }
   if (!data || data.kind !== 'aki-timetree') {
-    toast('TimeTreeのデータではありません。ブックマーク「TimeTree取込」で「コピー」してから押してください');
+    toast('取り込めるデータではありません。TimeTreeのブックマークか、manabaアプリの「空き時間アプリに送る」でコピーしてから押してください');
     return false;
   }
   const { calendars, events } = normalizeTimeTree(data);
@@ -458,10 +472,10 @@ document.addEventListener('click', async (e) => {
   const t = e.target.closest('button, [data-close]');
   if (!t) return;
   if (t.matches('[data-close]')) { closeSheet(); return; }
-  if (t.id === 'btn-import') { openImport(); return; }
+  if (t.id === 'btn-import' || t.dataset.open === 'import') { openImport(); return; }
   if (t.id === 'btn-settings') { openSettings(); return; }
   if (t.dataset.view) { state.ui.view = t.dataset.view; save(); render(); return; }
-  if (t.dataset.week !== undefined) { state.ui.weekOffset = t.dataset.week === '0' ? 0 : (state.ui.weekOffset || 0) + Number(t.dataset.week); save(); render(); return; }
+  if (t.dataset.week !== undefined) { state.ui.weekOffset = t.dataset.week === '0' ? 0 : Math.max(0, (state.ui.weekOffset || 0) + Number(t.dataset.week)); save(); render(); return; }
   if (t.dataset.month !== undefined) { state.ui.monthOffset = t.dataset.month === '0' ? 0 : (state.ui.monthOffset || 0) + Number(t.dataset.month); save(); render(); return; }
   if (t.dataset.min) { state.ui.listMin = Number(t.dataset.min); save(); render(); return; }
   if (t.dataset.ev) { openEvent(t.dataset.ev, t.dataset.s); return; }
@@ -539,6 +553,25 @@ function importFromHash() {
   try { importText(decodeURIComponent(m[1])); } catch { toast('取り込めませんでした'); }
 }
 
+// manaba課題アプリと保存場所が同じとき(Safari・パソコンなど)は、時間割を自動で読む。
+// iPhoneのホーム画面アプリどうしは保存場所が別なので、そのときはコピー&貼り付けで渡す。
+function syncClassesFromManaba() {
+  if (typeof classEventsForAki !== 'function') return;
+  let mb = null;
+  try { mb = JSON.parse(localStorage.getItem('manabaPwa')); } catch { mb = null; }
+  if (!mb || !mb.timetable) return;
+  const items = classEventsForAki(mb, dayKey(addDays(startOfDay(now()), -1)));
+  if (!items.length) return;
+  const sig = hashId(JSON.stringify(items.map((x) => [x.date, x.start, x.end, x.title, x.room])));
+  if (sig === state.classesSig && state.calendars.some((c) => c.id === CLASS_CAL)) return;
+  const { calendars, events } = normalizeClasses({ items });
+  applyImport(calendars, events, (id) => id === CLASS_CAL, { timetree: false });
+  state.classesAt = now();
+  state.classesSig = sig;
+  save();
+}
+
+syncClassesFromManaba();
 render();
 importFromHash();
 // 時間がたつと「これから」の空きが変わるので、1分ごと・画面に戻ったときに描き直す

@@ -107,3 +107,33 @@ function calDayInfo(date = new Date()) {
   }
   return null;
 }
+
+// 空き時間アプリ(aki/)に渡す、授業と試験の予定の一覧。
+// 時間割のコマ × 学期の授業日(休講日を除く)を日付ごとに並べる。fromYmd より前は入れない。
+// → [{ date: 'YYYY-MM-DD', start: 'HH:MM', end: 'HH:MM', period, title, room?, exam? }]
+function classEventsForAki(st, fromYmd) {
+  const tt = st && st.timetable;
+  if (!tt || !Array.isArray(tt.periods)) return [];
+  const out = [];
+  for (const [termId, term] of Object.entries(tt.terms || {})) {
+    if (!ACADEMIC_CALENDAR[termId] || !term) continue;
+    for (const [key, c] of Object.entries(term.classes || {})) {
+      if (!c) continue;
+      const [day, period] = key.split('-').map(Number);
+      const p = tt.periods[period - 1];
+      if (!p) continue;
+      const title = c.name || (c.courses || []).map((x) => x.name).join(' / ') || `${period}限`;
+      for (const ds of calClassDates(termId, day) || []) {
+        if (ds < fromYmd) continue;
+        out.push({ date: ds, start: p.start, end: p.end, period, title, room: c.room || undefined });
+      }
+    }
+  }
+  for (const ex of st.exams || []) {
+    const p = ex && ex.period ? tt.periods[ex.period - 1] : null;
+    if (!p || !ex.date || ex.date < fromYmd) continue;
+    out.push({ date: ex.date, start: p.start, end: p.end, period: ex.period, title: `${ex.kind || '試験'} ${ex.course || ''}`.trim(), exam: true });
+  }
+  out.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+  return out;
+}

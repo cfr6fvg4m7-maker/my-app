@@ -49,7 +49,7 @@ async function openApp(page, { stored } = {}) {
   await page.goto('/aki/index.html');
   await page.evaluate((s) => { localStorage.clear(); if (s) localStorage.setItem('akiJikan', JSON.stringify(s)); }, stored);
   await page.reload();
-  await page.waitForSelector('#panel-week');
+  await page.waitForSelector('.topbar');
 }
 
 async function importJson(page, json) {
@@ -100,28 +100,33 @@ test('取り込むと週・リストに空き時間が出る。カレンダー�
   await expect(page.locator('#empty')).toBeHidden();
 
   // 今日(金): 10:00〜13:00 と 17:00〜23:00 が空き → 合計9時間
-  await expect(page.locator('#summary')).toContainText('9時間');
-  await expect(page.locator('#summary')).toContainText('今日 10:00〜13:00');
+  await expect(page.locator('#summary')).toContainText('あと 9時間');
+  await expect(page.locator('#summary')).toContainText('いま空いています(13:00まで)');
 
-  // 週: 月曜(11/23)の「ゼミ」(毎週月曜のくり返し)と、金曜の「バイト」
+  // 週(今日から7日): 月曜(11/30)の「ゼミ」(毎週月曜のくり返し)と、今日の「バイト」
   await expect(page.locator('#panel-week .busy', { hasText: 'ゼミ' })).toHaveCount(1);
   await expect(page.locator('#panel-week .busy', { hasText: 'バイト' })).toHaveCount(1);
   await expect(page.locator('#panel-week .free')).not.toHaveCount(0);
 
-  // リスト(1時間以上): 土曜は 9:00〜18:00 と 20:00〜23:00
+  // リスト: 土曜は 9:00〜18:00 と 20:00〜23:00
   await page.click('.seg [data-view="list"]');
   const sat = page.locator('.dlist li', { hasText: '11/28(土)' });
-  await expect(sat).toContainText('9:00〜18:00');
-  await expect(sat).toContainText('20:00〜23:00');
-  // 12/5(土) は家族の「旅行」(終日)で空きなし
-  await expect(page.locator('.dlist li', { hasText: '12/5(土)' })).toContainText('空きなし');
+  await expect(sat).toContainText('9:00 〜 18:00');
+  await expect(sat).toContainText('20:00 〜 23:00');
+  // 12/5(土) は家族の「旅行」(終日)。初期設定では終日の予定は数えない
+  const trip = page.locator('.dlist li', { hasText: '12/5(土)' });
+  await expect(trip).toContainText('9:00 〜 23:00');
+  await page.click('#btn-settings');
+  await page.locator('[data-set="allDayBusy"]').check();
+  await page.click('[data-close]');
+  await expect(trip).toContainText('空きなし');
 
   // 家族カレンダーを外す → 土曜は一日中空き、12/5 も空く
   await page.click('#btn-settings');
   await page.locator('[data-cal="tt:22"]').uncheck();
   await page.click('[data-close]');
-  await expect(sat).toContainText('9:00〜23:00');
-  await expect(page.locator('.dlist li', { hasText: '12/5(土)' })).toContainText('9:00〜23:00');
+  await expect(sat).toContainText('9:00 〜 23:00');
+  await expect(trip).toContainText('9:00 〜 23:00');
 });
 
 test('予定を「空きとして数える」にできる・前後の余裕・コピー用の文章', async ({ page }) => {
@@ -134,13 +139,13 @@ test('予定を「空きとして数える」にできる・前後の余裕・�
   await page.click('#btn-settings');
   await page.locator('[data-set="buffer"]').selectOption('30');
   await page.click('[data-close]');
-  await expect(page.locator('#summary')).toContainText('10:00〜12:30');
+  await expect(page.locator('#summary')).toContainText('いま空いています(12:30まで)');
 
   // 「バイト」を空きとして数える → 今日は全部空き
   await page.locator('#panel-week .busy', { hasText: 'バイト' }).click();
   await page.locator('[data-ignore]').check();
   await page.click('[data-close]');
-  await expect(page.locator('#summary')).toContainText('10:00〜23:00');
+  await expect(page.locator('#summary')).toContainText('いま空いています(23:00まで)');
 
   await page.click('.seg [data-view="list"]');
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -163,14 +168,13 @@ test('ICSファイル: くり返し・EXDATE・1回だけの変更(RECURRENCE-ID
   await page.setInputFiles('#ics-file', { name: 'jugyo.ics', mimeType: 'text/calendar', buffer: Buffer.from(ics) });
   await expect(page.locator('#toast')).toContainText('「授業」を読み込みました');
   await page.click('.seg [data-view="list"]');
-  await page.click('.fchip[data-min="30"]');
   // 今日(金): 9:00の回は14:00〜15:30に移動 → 10:00〜14:00 と 15:30〜23:00
   const fri = page.locator('.dlist li', { hasText: '11/27(金)' });
-  await expect(fri).toContainText('10:00〜14:00');
-  await expect(fri).toContainText('15:30〜23:00');
+  await expect(fri).toContainText('10:00 〜 14:00');
+  await expect(fri).toContainText('15:30 〜 23:00');
   // 11/30(月) は EXDATE で休み → 8:00から空き、12/4(金) はふつうに 9:00〜10:30 が予定
-  await expect(page.locator('.dlist li', { hasText: '11/30(月)' })).toContainText('8:00〜23:00');
-  await expect(page.locator('.dlist li', { hasText: '12/4(金)' })).toContainText('10:30〜23:00');
+  await expect(page.locator('.dlist li', { hasText: '11/30(月)' })).toContainText('8:00 〜 23:00');
+  await expect(page.locator('.dlist li', { hasText: '12/4(金)' })).toContainText('10:30 〜 23:00');
 });
 
 test('月の表示: 日ごとの空き時間と、押すとその日の予定', async ({ page }) => {
@@ -185,4 +189,67 @@ test('月の表示: 日ごとの空き時間と、押すとその日の予定', 
   await cell.click();
   await expect(page.locator('#sheet')).toContainText('家族で外食');
   await expect(page.locator('#sheet')).toContainText('空き 9時間');
+});
+
+// ---- manaba課題アプリの授業を入れる ----
+const helpers = require('./helpers');
+const CLASSES = {
+  '5-2': { name: '情報社会論', room: '7201', source: 'manaba' }, // 金2限 10:50〜12:20
+  '1-1': { name: '教育課程論', room: '', source: 'manaba' },     // 月1限 9:10〜10:40
+};
+
+test('manabaアプリ: 時間割から授業の時間をコピーする(休講日は入れない)', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await helpers.openApp(page, { time: NOW, state: helpers.makeState({ classes: CLASSES }), hash: 'timetable' });
+  await page.click('#btn-send-aki');
+  await expect(page.locator('#toast')).toContainText('コピーしました');
+  const data = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(data.kind).toBe('aki-classes');
+  const fri = data.items.filter((x) => x.title === '情報社会論');
+  expect(fri[0]).toMatchObject({ date: '2026-11-27', start: '10:50', end: '12:20', period: 2, room: '7201' });
+  // 冬季休業(12/25〜1/7)と 1/15(休講日)の金曜は入らない
+  expect(fri.map((x) => x.date)).not.toContain('2027-01-01');
+  expect(fri.map((x) => x.date)).not.toContain('2027-01-15');
+  expect(fri.map((x) => x.date)).toContain('2027-01-08');
+  // 前の日より前は入らない
+  expect(data.items.every((x) => x.date >= '2026-11-26')).toBe(true);
+});
+
+test('空き時間アプリ: コピーした授業を取り込むと予定になり、カレンダーとして外せる', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await helpers.openApp(page, { time: NOW, state: helpers.makeState({ classes: CLASSES }), hash: 'timetable' });
+  await page.click('#btn-send-aki');
+  const json = await page.evaluate(() => navigator.clipboard.readText());
+
+  await openApp(page);
+  await page.click('#btn-import');
+  await page.click('#paste-import');
+  await expect(page.locator('#toast')).toContainText('授業の時間を取り込みました');
+  // 今日(金)は 10:00〜10:50 と 12:20〜23:00 が空き
+  await page.click('.seg [data-view="list"]');
+  const fri = page.locator('.dlist li', { hasText: '11/27(金)' });
+  await expect(fri).toContainText('10:00 〜 10:50');
+  await expect(fri).toContainText('12:20 〜 23:00');
+  // 予定を押すと教室も見られる
+  await page.click('.seg [data-view="week"]');
+  await page.locator('#panel-week .busy', { hasText: '情報社会論' }).first().click();
+  await expect(page.locator('#sheet')).toContainText('2限 ・ 教室: 7201');
+  await page.click('[data-close]');
+  // 授業のカレンダーを外すと、今日は全部空き
+  await page.click('#btn-settings');
+  await page.locator('[data-cal="mb:classes"]').uncheck();
+  await page.click('[data-close]');
+  await page.click('.seg [data-view="list"]');
+  await expect(fri).toContainText('10:00 〜 23:00');
+  // TimeTreeの取り込み日時は変わらない(授業だけでは「取り込み」扱いにしない)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('akiJikan')).importedAt)).toBeNull();
+});
+
+test('空き時間アプリ: manabaアプリと保存場所が同じなら、時間割を自動で読む', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  await page.goto('/aki/index.html');
+  await page.evaluate((s) => { localStorage.clear(); localStorage.setItem('manabaPwa', JSON.stringify(s)); }, helpers.makeState({ classes: CLASSES }));
+  await page.reload();
+  await expect(page.locator('#panel-week .busy', { hasText: '情報社会論' })).toHaveCount(1);
+  await expect(page.locator('#panel-week .busy', { hasText: '教育課程論' })).toHaveCount(1);
 });
