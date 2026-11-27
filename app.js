@@ -1895,17 +1895,14 @@ function mapsUrl(mode) {
   return `https://www.google.com/maps/dir/?${q.toString()}`;
 }
 
-// 到着時刻つきの電車の経路(公式のリンクには到着時刻がないので、昔の形式のリンクを使う)
+// 到着時刻つきの電車の経路。
+// 公式のリンク(api=1)には到着時刻がないので、Googleマップ自身が使う経路URLの data パラメータで
+// 「到着(6e1)」と時刻(8j = 現地時刻をそのままUTCとみなした秒)、電車(3e3)を指定する。
 function mapsArriveUrl(arrive) {
-  const h = arrive.getHours();
-  const q = new URLSearchParams({
-    daddr: CAMPUS_ADDRESS, dirflg: 'r', ttype: 'arr',
-    date: `${arrive.getMonth() + 1}/${arrive.getDate()}/${String(arrive.getFullYear()).slice(2)}`,
-    time: `${h % 12 || 12}:${String(arrive.getMinutes()).padStart(2, '0')}${h < 12 ? 'am' : 'pm'}`,
-  });
-  const home = homePlace();
-  if (home) q.set('saddr', home);
-  return `https://www.google.com/maps?${q.toString()}`;
+  const ts = Date.UTC(arrive.getFullYear(), arrive.getMonth(), arrive.getDate(), arrive.getHours(), arrive.getMinutes()) / 1000;
+  const origin = homePlace(); // 空なら現在地から
+  return `https://www.google.com/maps/dir/${encodeURIComponent(origin)}/${encodeURIComponent(CAMPUS_ADDRESS)}`
+    + `/data=!4m6!4m5!2m3!6e1!7e2!8j${ts}!3e3`;
 }
 
 // Yahoo!乗換案内: 最寄りの北越谷駅に、歩く時間ぶん早く着く電車を「到着時刻」で探す
