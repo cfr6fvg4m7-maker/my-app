@@ -227,18 +227,29 @@
     var rows = document.querySelectorAll('tr');
     var title = '';
     var end = '';
-    var parts = [];
+    var exact = [];  // 見出しが「問題」「課題内容」などぴったりの行
+    var parts = [];  // 見出しにそれらしい言葉を含む行
     for (var i = 0; i < rows.length; i++) {
-      var th = rows[i].querySelector('th');
-      var td = rows[i].querySelector('td');
-      if (!th || !td) continue;
-      var label = clean(th.textContent);
-      var text = String(td.innerText || td.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
-      if (!text) continue;
+      // 見出しは th のことも td のこともある(manaba のレポート提出窓口は td)。左のマスを見出し、右のマスを中身とみなす
+      var cells = rows[i].querySelectorAll('th, td');
+      if (cells.length < 2) continue;
+      var label = clean(cells[0].textContent);
+      var cell = cells[cells.length - 1];
+      var text = String(cell.innerText || cell.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+      if (!text || label.length > 20) continue;
       if (label.indexOf('タイトル') >= 0) title = clean(text);
-      else if (label.indexOf('受付終了') >= 0) end = clean(text);
-      else if (/課題内容|説明|内容|指示|問題|本文|詳細|概要|課題文|課題/.test(label)) parts.push(text);
+      else if (label.indexOf('受付終了') >= 0) end = clean(text.split('\n')[0]);
+      else if (/^(問題|課題内容|課題|説明|内容|本文|課題文|指示|設問)$/.test(label)) exact.push(text);
+      else if (/課題内容|説明|内容|指示|問題|本文|詳細|概要|課題文/.test(label)) parts.push(text);
     }
+    if (!title) {
+      // 表の一番上の1マスだけの行(「課題５ 教授フローチャート」など)を題名にする
+      for (var j = 0; j < rows.length; j++) {
+        var only = rows[j].querySelectorAll('th, td');
+        if (only.length === 1 && clean(only[0].textContent).length <= 60) { title = clean(only[0].textContent); break; }
+      }
+    }
+    if (exact.length) parts = exact;
     var desc = sel || parts.join('\n\n') || longestBlock();
     if (!desc) return null;
     if (!title) {

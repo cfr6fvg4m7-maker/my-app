@@ -110,3 +110,14 @@ test('見出しのない課題ページでも、一番長い文章を説明と�
   expect(data.desc).not.toContain('Copyright');
   expect(data.desc).not.toContain('マイページ');
 });
+
+test('manabaのレポート提出窓口: 見出しが td の「問題」の行を読む', async ({ page }) => {
+  await page.goto('/tests/fixtures/ct/course_200_report_400.html');
+  await page.evaluate((src) => { const s = document.createElement('script'); s.src = src; document.body.appendChild(s); },
+    new URL('/bookmarklet.js', page.url()).href);
+  await page.waitForSelector('#manaba-pwa-overlay');
+  const data = JSON.parse(await page.$eval('#manaba-pwa-overlay textarea', (e) => e.value));
+  expect(data.desc).toBe('授業のページの清掃のフロチャートをJPEGで提出しなさい。1枚に収めること。');
+  expect(data.title).toBe('課題５ 教授フローチャート');
+  expect(data.end).toBe('2026-11-28 22:00');
+});
