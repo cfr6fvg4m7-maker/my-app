@@ -45,3 +45,21 @@ test('下書きを読んでアドバイスでは、書き直しを頼まない',
   expect(q).toContain('書き直した文章は示さずに');
   expect(q).toContain('【締切】12/3(木)');
 });
+
+test('そのままClaudeに聞く: 自分の質問と課題の情報だけを送る', async ({ page, context }) => {
+  const tasks = [{ id: 'r1', source: 'manaba', type: 'レポート', title: '第１回レポート', course: '教科概説「国語」(B2)', url: 'https://x/1', end: at(2026, 11, 27, 18), done: false, desc: '国語教育の目的を論じなさい。' }];
+  await openApp(page, { state: makeState({ tasks }), hash: 'tasks', time: at(2026, 11, 26, 20) });
+  await page.locator('#view-tasks .task .ai-btn').click();
+  await expect(page.locator('#ai-q-label')).toBeHidden();
+  await page.check('#form-ai input[value=direct]');
+  await expect(page.locator('#ai-q-label')).toBeVisible();
+  await page.fill('#form-ai textarea[name=question]', 'この課題で使えそうな具体例を教えて');
+  const popup = context.waitForEvent('page');
+  await page.click('#form-ai button[value=ok]');
+  const q = new URL((await popup).url()).searchParams.get('q');
+  expect(q.startsWith('この課題で使えそうな具体例を教えて')).toBe(true);
+  expect(q).toContain('【課題名】第１回レポート');
+  expect(q).toContain('【課題の内容】\n国語教育の目的を論じなさい。');
+  expect(q).not.toContain('完成した文章ではなく');
+  expect(q).not.toContain('相談させてください');
+});

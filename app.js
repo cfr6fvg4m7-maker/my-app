@@ -1803,6 +1803,8 @@ const AI_MODES = {
       '下の「自分の考え・メモ」は私が書いた下書きです。書き直した文章は示さずに、良い点、分かりにくい点、論理が飛んでいる所、課題の求めに合っていない所、足すとよい観点を、箇条書きで具体的に指摘してください。',
     ],
   },
+  // 決まった頼み方を付けず、自分の質問をそのまま送る
+  direct: { label: 'そのままClaudeに聞く', ask: [] },
   plan: {
     label: '進め方の計画',
     ask: [
@@ -1813,18 +1815,18 @@ const AI_MODES = {
 
 let aiTaskId = null;
 
-function aiPrompt(t, mode, desc, mine) {
+function aiPrompt(t, mode, desc, mine, question = '') {
   const m = AI_MODES[mode] || AI_MODES.idea;
+  const direct = mode === 'direct';
   const lines = [
-    '大学の課題について相談させてください。',
+    direct ? (question || 'この課題について質問させてください。') : '大学の課題について相談させてください。',
     '',
     `【課題名】${t.title}`,
     t.course ? `【授業】${t.course}` : null,
     `【締切】${fmtTaskDue(t)}(今日は${fmtLongDate(new Date())})`,
-    desc ? `【課題の内容】\n${desc}` : '【課題の内容】(manabaの説明をここに貼ってください)',
+    desc ? `【課題の内容】\n${desc}` : (direct ? null : '【課題の内容】(manabaの説明をここに貼ってください)'),
     mine ? `【自分の考え・メモ】\n${mine}` : null,
-    '',
-    ...m.ask,
+    ...(m.ask.length ? ['', ...m.ask] : []),
   ];
   return lines.filter((x) => x !== null).join('\n');
 }
@@ -1837,6 +1839,7 @@ function openAi(id) {
   f.reset();
   f.desc.value = t.desc || '';
   f.mine.value = t.aiMine || '';
+  $('#ai-q-label').hidden = true;
   setKids($('#ai-target'), el('b', {}, t.title), t.course ? ` ・ ${t.course}` : '', ` ・ 締切 ${fmtTaskDue(t)}`);
   $('#dlg-ai').showModal();
 }
@@ -1849,8 +1852,15 @@ function currentAiPrompt() {
   t.desc = f.desc.value.trim();
   t.aiMine = f.mine.value.trim();
   saveState();
-  return aiPrompt(t, f.mode.value, t.desc, t.aiMine);
+  return aiPrompt(t, f.mode.value, t.desc, t.aiMine, f.question.value.trim());
 }
+
+// 「そのままClaudeに聞く」を選んだときだけ質問欄を出す
+$('#ai-modes').addEventListener('change', () => {
+  const direct = $('#form-ai').mode.value === 'direct';
+  $('#ai-q-label').hidden = !direct;
+  if (direct) $('#form-ai').question.focus();
+});
 
 $('#btn-ai-copy').addEventListener('click', async () => {
   const text = currentAiPrompt();

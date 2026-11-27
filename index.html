@@ -200,7 +200,9 @@
         <label><input type="radio" name="mode" value="outline"> 構成案を作る</label>
         <label><input type="radio" name="mode" value="review"> 下書きを読んでアドバイス</label>
         <label><input type="radio" name="mode" value="plan"> 進め方の計画</label>
+        <label><input type="radio" name="mode" value="direct"> そのままClaudeに聞く(自分で質問を書く)</label>
       </div>
+      <label id="ai-q-label" hidden>質問<textarea name="question" rows="3" placeholder="例: この課題で使えそうな具体例を教えて"></textarea></label>
       <label>課題の内容(manabaの説明を貼り付け)<textarea name="desc" rows="4" placeholder="例: ○○について、授業内容をふまえて800字で論じなさい。"></textarea></label>
       <label id="ai-mine-label">自分の考え・メモ(任意)<textarea name="mine" rows="3"></textarea></label>
       <p class="small muted">AIの提案は参考にして、最後は自分で考えて書きましょう。授業によってはAIの利用にルールがあるので、シラバスや先生の指示も確認してください。</p>
