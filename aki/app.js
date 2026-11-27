@@ -5,6 +5,11 @@
 const KEY = 'akiJikan';
 const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
 const TIMETREE_URL = 'https://timetreeapp.com/';
+// ブックマーク「TimeTree取込」は Safari にあるので、ホーム画面アプリの中の簡易ブラウザではなく
+// Safari 本体で開く(iOS の x-safari-https:)。
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const timetreeLink = () => (isIOS ? 'x-safari-' + TIMETREE_URL : TIMETREE_URL);
 const HOUR_PX = 44;
 
 const DEFAULT_SETTINGS = {
@@ -363,7 +368,7 @@ function openImport() {
   openSheet('予定を取り込む', `
     <h3>TimeTreeから</h3>
     <ol class="steps">
-      <li><a class="btn wide" href="${TIMETREE_URL}" target="_blank" rel="noopener">① TimeTreeを開く</a><span class="small muted">ブラウザでTimeTreeのWeb版が開きます(ログインを求められたらログイン)</span></li>
+      <li><a class="btn wide" href="${timetreeLink()}" target="_blank" rel="noopener">① TimeTreeを開く</a><span class="small muted">SafariでTimeTreeが開きます。最初の1回は右上の「≡」→「ログイン」でログイン(紹介ページのままでも、ログインしていれば取り込めます)</span></li>
       <li>ブックマークから「<b>TimeTree取込</b>」→「<b>コピー</b>」<br><a class="small" href="bookmarklet.html">ブックマークの設定(最初に1回だけ)</a></li>
       <li><button type="button" class="btn primary wide" id="paste-import">② 貼り付けて取り込む</button><span class="small muted">「ペースト」の確認が出たら押してください</span></li>
     </ol>
