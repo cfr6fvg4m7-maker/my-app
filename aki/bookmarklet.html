@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f9d55">
+  <title>TimeTree取込の設定</title>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    main { line-height: 1.7; }
+    h2 { font-size: 17px; margin: 24px 0 8px; }
+    ol { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    .bm { display: inline-block; padding: 8px 14px; border-radius: 10px; border: 2px dashed var(--primary); color: var(--primary); font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>TimeTree取込の設定</h1>
+    <a class="btn" href="./">戻る</a>
+  </header>
+  <main>
+    <p>TimeTreeのWeb版(timetreeapp.com)で使う、予定の読み取り用ブックマークです。最初に1回だけ設定します。</p>
+
+    <div class="card">
+      <button id="copy" class="btn primary wide" disabled>コードをコピー</button>
+      <p id="status" class="small muted" style="margin:8px 0 0">読み込み中…</p>
+    </div>
+
+    <h2>iPhone(Safari)での設定</h2>
+    <ol>
+      <li>このページを表示したまま、Safari下の<b>共有ボタン</b>(□に↑)→「<b>ブックマークを追加</b>」。名前を「<b>TimeTree取込</b>」にして保存。</li>
+      <li>上の「<b>コードをコピー</b>」を押す。</li>
+      <li>Safariの<b>ブックマーク</b>(本のマーク)→「<b>編集</b>」→ さっきの「TimeTree取込」をタップ。</li>
+      <li>アドレス欄の文字を<b>全部消して</b>、長押しで「<b>ペースト</b>」→「完了」。</li>
+    </ol>
+
+    <h2>使い方</h2>
+    <ol>
+      <li>アプリの「取り込む」→「<b>① TimeTreeを開く</b>」(SafariでTimeTreeが開きます。初回はログイン)。</li>
+      <li>カレンダーが表示されたら、ブックマーク(本のマーク📖)から「<b>TimeTree取込</b>」をタップ。</li>
+      <li>「◯件の予定を読み取りました」と出たら「<b>コピー</b>」。</li>
+      <li>空き時間アプリに戻り、「取り込む」→「<b>② 貼り付けて取り込む</b>」(「ペースト」の確認が出たら押す)。</li>
+    </ol>
+    <p class="small muted">
+      ・TimeTreeの公式APIは2023年に終了したため、ログイン中のWeb版が使っている読み取り用の仕組みを利用しています。TimeTree側の変更で使えなくなることがあります。<br>
+      ・パスワードは扱いません。予定は読み取るだけで、TimeTreeの予定を変えることはありません。<br>
+      ・読み取った予定はこの端末の中だけに保存されます。
+    </p>
+
+    <h2>パソコンの場合</h2>
+    <p>このボタンをブックマークバーにドラッグしてください: <a id="drag" class="bm" href="#">TimeTree取込</a></p>
+
+    <details>
+      <summary class="small muted">コードを表示</summary>
+      <textarea id="code" rows="6" readonly></textarea>
+    </details>
+  </main>
+
+  <script>
+  (async () => {
+    const status = document.getElementById('status');
+    const copyBtn = document.getElementById('copy');
+    try {
+      const appUrl = new URL('./', location.href).href;
+      let src = await (await fetch('timetree.js', { cache: 'no-store' })).text();
+      src = src
+        .replace(/^\/\*[\s\S]*?\*\/\s*/, '')       // 先頭の説明コメントを除去
+        .replace(/__APP_URL__/g, appUrl)
+        .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('//')).join('\n');
+      const code = 'javascript:' + encodeURIComponent(src);
+      document.getElementById('code').value = code;
+      document.getElementById('drag').href = code;
+      copyBtn.disabled = false;
+      status.textContent = '準備できました。';
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(code);
+          status.textContent = 'コピーしました。手順3へ進んでください。';
+        } catch {
+          status.textContent = 'コピーできませんでした。下の「コードを表示」から全選択してコピーしてください。';
+        }
+      });
+    } catch (e) {
+      status.textContent = '読み込みに失敗しました。インターネットに接続して開き直してください。';
+    }
+  })();
+  </script>
+</body>
+</html>
