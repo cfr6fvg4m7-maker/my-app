@@ -33,23 +33,33 @@ test('試験: 前日は「明日」、当日は「今日の試験」', async ({ 
   await expect(page.locator('#today-head')).toContainText('定期試験期間');
 });
 
-test('大学への行き方: Googleマップの経路検索を開くリンクと出発地の設定', async ({ page }) => {
+test('大学への行き方: 着きたい時刻(初期値は次の授業の10分前)で調べるリンク', async ({ page }) => {
   await openApp(page, { state: makeState({ classes }), time: at(2026, 11, 25, 20) }); // 水曜の夜 → 明日(木)1限
   await expect(page.locator('#commute')).toContainText('次の授業: 明日 1限 09:10〜 英語II(AD)');
-  await expect(page.locator('#commute')).toContainText('出発地: 現在地');
-  const href = await page.locator('#commute a.primary').getAttribute('href');
-  const u = new URL(href);
-  expect(u.origin + u.pathname).toBe('https://www.google.com/maps/dir/');
-  expect(u.searchParams.get('travelmode')).toBe('transit');
-  expect(u.searchParams.get('destination')).toContain('文教大学 越谷キャンパス');
-  expect(u.searchParams.get('origin')).toBeNull();
+  await expect(page.locator('#commute input[type=time]')).toHaveValue('09:00');
+  await expect(page.locator('#commute input[type=date]')).toHaveValue('2026-11-26');
 
-  await page.click('#commute .link-btn');
-  await page.fill('#form-home input[name=home]', '北越谷駅');
+  const g = new URL(await page.locator('#commute a.primary').getAttribute('href'));
+  expect(g.searchParams.get('ttype')).toBe('arr');
+  expect(g.searchParams.get('date')).toBe('11/26/26');
+  expect(g.searchParams.get('time')).toBe('9:00am');
+  expect(g.searchParams.get('daddr')).toContain('文教大学 越谷キャンパス');
+
+  // 出発地(駅)を入れて、時刻を変える
+  await page.click('#commute .commute-head .link-btn');
+  await page.fill('#form-home input[name=home]', '春日部駅');
   await page.click('#form-home button[value=ok]');
-  await expect(page.locator('#commute')).toContainText('出発地: 北越谷駅');
-  const u2 = new URL(await page.locator('#commute a.primary').getAttribute('href'));
-  expect(u2.searchParams.get('origin')).toBe('北越谷駅');
+  await page.fill('#commute input[type=time]', '13:00');
+  await page.dispatchEvent('#commute input[type=time]', 'change');
+  const y = new URL(await page.locator('#commute a', { hasText: 'Yahoo' }).getAttribute('href'));
+  expect(y.origin + y.pathname).toBe('https://transit.yahoo.co.jp/search/result');
+  expect(Object.fromEntries(y.searchParams)).toMatchObject({ from: '春日部', to: '北越谷', y: '2026', m: '11', d: '26', hh: '12', m1: '5', m2: '0', type: '4' });
+  const g2 = new URL(await page.locator('#commute a.primary').getAttribute('href'));
+  expect(g2.searchParams.get('time')).toBe('1:00pm');
+  expect(g2.searchParams.get('saddr')).toBe('春日部駅');
+  // 元に戻す
+  await page.click('#commute .commute-arrive .link-btn');
+  await expect(page.locator('#commute input[type=time]')).toHaveValue('09:00');
   // 出発地はバックアップ用のデータには入れない
-  expect(JSON.stringify(await page.evaluate(() => localStorage.getItem('manabaPwa')))).not.toContain('北越谷駅');
+  expect(JSON.stringify(await page.evaluate(() => localStorage.getItem('manabaPwa')))).not.toContain('春日部');
 });

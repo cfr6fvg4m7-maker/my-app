@@ -1895,32 +1895,92 @@ function mapsUrl(mode) {
   return `https://www.google.com/maps/dir/?${q.toString()}`;
 }
 
+// 到着時刻つきの電車の経路(公式のリンクには到着時刻がないので、昔の形式のリンクを使う)
+function mapsArriveUrl(arrive) {
+  const h = arrive.getHours();
+  const q = new URLSearchParams({
+    daddr: CAMPUS_ADDRESS, dirflg: 'r', ttype: 'arr',
+    date: `${arrive.getMonth() + 1}/${arrive.getDate()}/${String(arrive.getFullYear()).slice(2)}`,
+    time: `${h % 12 || 12}:${String(arrive.getMinutes()).padStart(2, '0')}${h < 12 ? 'am' : 'pm'}`,
+  });
+  const home = homePlace();
+  if (home) q.set('saddr', home);
+  return `https://www.google.com/maps?${q.toString()}`;
+}
+
+// Yahoo!乗換案内: 最寄りの北越谷駅に、歩く時間ぶん早く着く電車を「到着時刻」で探す
+const CAMPUS_STATION = '北越谷';
+const STATION_WALK_MIN = 10; // 北越谷駅からキャンパスまで徒歩約10分
+function yahooArriveUrl(arrive) {
+  const t = new Date(arrive.getTime() - STATION_WALK_MIN * 60000);
+  const mm = String(t.getMinutes()).padStart(2, '0');
+  const q = new URLSearchParams({
+    from: homePlace().replace(/駅$/, ''), to: CAMPUS_STATION,
+    y: String(t.getFullYear()), m: String(t.getMonth() + 1).padStart(2, '0'), d: String(t.getDate()).padStart(2, '0'),
+    hh: String(t.getHours()).padStart(2, '0'), m1: mm[0], m2: mm[1],
+    type: '4', // 4 = 到着時刻で検索
+    ticket: 'ic',
+  });
+  return `https://transit.yahoo.co.jp/search/result?${q.toString()}`;
+}
+
 // 今日このあと、または次に授業がある日の最初の授業
 function nextClassForCommute(now = new Date()) {
   const info = nowInfo(now);
-  if (info.next) return { label: '今日', period: info.next.period, p: info.next.p, c: info.next.c };
+  if (info.next) return { label: '今日', date: new Date(now), period: info.next.period, p: info.next.p, c: info.next.c };
   const n = nextClassDay(now);
   if (!n) return null;
   const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
   const label = dateStr(n.date) === dateStr(tomorrow) ? '明日' : fmtLongDate(n.date);
-  return { label, period: n.first.period, p: state.timetable.periods[n.first.period - 1], c: n.first.c };
+  return { label, date: n.date, period: n.first.period, p: state.timetable.periods[n.first.period - 1], c: n.first.c };
+}
+
+// 着きたい時刻(自分で変えたときはそれを使う。初期値は次の授業の10分前)
+let arriveOverride = null;
+function defaultArrive(next, now) {
+  if (!next || !next.p) {
+    const d = new Date(now); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+    return d;
+  }
+  const [h, m] = next.p.start.split(':').map(Number);
+  const d = new Date(next.date); d.setHours(h, m - 10, 0, 0);
+  return d;
 }
 
 function renderCommute(now = new Date()) {
   const next = nextClassForCommute(now);
   const home = homePlace();
-  const a = (mode, text, cls = 'btn') => el('a', { class: cls, href: mapsUrl(mode), target: '_blank', rel: 'noopener' }, text);
+  const arrive = arriveOverride || defaultArrive(next, now);
+  const hhmm = `${String(arrive.getHours()).padStart(2, '0')}:${String(arrive.getMinutes()).padStart(2, '0')}`;
+  const a = (href, text, cls = 'btn') => el('a', { class: cls, href, target: '_blank', rel: 'noopener' }, text);
+  const dateIn = el('input', { type: 'date', class: 'att-date', value: dateStr(arrive), 'aria-label': '着きたい日' });
+  const timeIn = el('input', { type: 'time', class: 'att-date', value: hhmm, 'aria-label': '着きたい時刻' });
+  const onChange = () => {
+    if (!dateIn.value || !timeIn.value) return;
+    const [y, m, d] = dateIn.value.split('-').map(Number);
+    const [hh, mi] = timeIn.value.split(':').map(Number);
+    arriveOverride = new Date(y, m - 1, d, hh, mi);
+    renderCommute(now);
+  };
+  dateIn.onchange = onChange;
+  timeIn.onchange = onChange;
   setKids($('#commute'),
     el('div', { class: 'commute-head' },
       el('b', {}, '🏫 大学への行き方'),
       el('button', { type: 'button', class: 'link-btn', onclick: openHome }, '出発地を設定')),
     next ? el('div', { class: 'small' }, `次の授業: ${next.label} ${next.period}限 ${next.p ? next.p.start : ''}〜 ${next.c.name}`) : null,
     el('div', { class: 'small muted' }, `行き先: ${CAMPUS_NAME} ・ 出発地: ${home || '現在地'}`),
+    el('div', { class: 'commute-arrive' },
+      el('span', { class: 'small' }, '着きたい時刻'), dateIn, timeIn,
+      arriveOverride ? el('button', { type: 'button', class: 'link-btn', onclick: () => { arriveOverride = null; renderCommute(now); } }, '授業の10分前に戻す') : null),
     el('div', { class: 'commute-btns' },
-      a('transit', 'Googleマップで行き方を調べる(電車・バス)', 'btn primary wide'),
-      a('bicycling', '自転車'),
-      a('driving', '車'),
-      a('walking', '徒歩')));
+      a(mapsArriveUrl(arrive), `Googleマップ(${hhmm}着で電車を調べる)`, 'btn primary wide'),
+      a(yahooArriveUrl(arrive), `Yahoo!乗換案内(北越谷駅に${STATION_WALK_MIN}分前着)`, 'btn wide'),
+      a(mapsUrl('transit'), '今すぐ出る'),
+      a(mapsUrl('bicycling'), '自転車'),
+      a(mapsUrl('driving'), '車'),
+      a(mapsUrl('walking'), '徒歩')),
+    home ? null : el('div', { class: 'small muted' }, 'Yahoo!乗換案内で調べるときは、「出発地を設定」で最寄り駅を入れておくと便利です。'));
 }
 
 function openHome() {

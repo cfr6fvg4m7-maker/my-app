@@ -460,3 +460,5 @@ body { padding-bottom: calc(env(safe-area-inset-bottom) + 64px); }
 .commute-btns .btn { padding: 6px 12px; font-size: 14px; }
 .commute-btns .btn.wide { width: 100%; padding: 10px; font-size: 15px; }
 .commute-head .link-btn { white-space: nowrap; }
+.commute-arrive { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.commute-arrive .att-date { font-size: 15px; padding: 5px 6px; }
