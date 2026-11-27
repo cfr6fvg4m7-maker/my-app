@@ -190,6 +190,38 @@
     return /course_\d+_[a-z]+_\d+/.test(location.pathname);
   }
 
+  // 見出しで見つからないとき: メニュー・ヘッダー・日時の表などを除いて、一番長い文章のまとまりを探す
+  function longestBlock() {
+    var skip = /^(nav|header|footer|script|style|noscript|form|select|button)$/i;
+    var skipClass = /(nav|menu|header|footer|breadcrumb|sidebar|tab|pager|login|copyright)/i;
+    var best = null;
+    var bestLen = 0;
+    var nodes = document.body.querySelectorAll('div, td, section, article, p, li, dd');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var bad = false;
+      for (var p = n; p && p !== document.body; p = p.parentElement) {
+        if (skip.test(p.tagName) || skipClass.test(String(p.className || '') + ' ' + (p.id || ''))) { bad = true; break; }
+      }
+      if (bad || n.id === ID) continue;
+      var text = String(n.innerText || '').trim();
+      // 大きすぎる入れ物(ページ全体など)より、文章そのものに近い要素を選ぶ: 子に同じくらい長い要素があれば飛ばす
+      var len = text.length;
+      if (len < 20) continue;
+      var kids = n.children;
+      var covered = false;
+      for (var k = 0; k < kids.length; k++) {
+        if (String(kids[k].innerText || '').trim().length > len * 0.8) { covered = true; break; }
+      }
+      if (covered) continue;
+      // 日時や数字ばかりの表は除く
+      var datey = (text.match(/\d{4}-\d{2}-\d{2}/g) || []).length;
+      if (datey >= 2 && len < 200) continue;
+      if (len > bestLen) { best = text; bestLen = len; }
+    }
+    return best ? best.replace(/\n{3,}/g, '\n\n') : '';
+  }
+
   function readTaskDesc() {
     var sel = clean(window.getSelection ? String(window.getSelection()) : '');
     var rows = document.querySelectorAll('tr');
@@ -205,9 +237,9 @@
       if (!text) continue;
       if (label.indexOf('タイトル') >= 0) title = clean(text);
       else if (label.indexOf('受付終了') >= 0) end = clean(text);
-      else if (/課題内容|説明|内容|指示|問題文|課題/.test(label)) parts.push(text);
+      else if (/課題内容|説明|内容|指示|問題|本文|詳細|概要|課題文|課題/.test(label)) parts.push(text);
     }
-    var desc = sel || parts.join('\n\n');
+    var desc = sel || parts.join('\n\n') || longestBlock();
     if (!desc) return null;
     if (!title) {
       var h = document.querySelector('h1, h2, .pagetitle, .articletitle');

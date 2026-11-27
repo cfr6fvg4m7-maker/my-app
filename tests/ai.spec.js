@@ -98,3 +98,15 @@ test('AIに相談の「コピーした内容を入れる」: ふつうの文字�
   await page.click('#btn-ai-paste');
   await expect(page.locator('#form-ai textarea[name=desc]')).toHaveValue('発表スライド10枚、質疑5分');
 });
+
+test('見出しのない課題ページでも、一番長い文章を説明として読む', async ({ page }) => {
+  await page.goto('/tests/fixtures/ct/course_100_query_300.html');
+  await page.evaluate((src) => { const s = document.createElement('script'); s.src = src; document.body.appendChild(s); },
+    new URL('/bookmarklet.js', page.url()).href);
+  await page.waitForSelector('#manaba-pwa-overlay');
+  const data = JSON.parse(await page.$eval('#manaba-pwa-overlay textarea', (e) => e.value));
+  expect(data.kind).toBe('taskdesc');
+  expect(data.desc).toContain('斜面上の物体の加速度を求めなさい');
+  expect(data.desc).not.toContain('Copyright');
+  expect(data.desc).not.toContain('マイページ');
+});
