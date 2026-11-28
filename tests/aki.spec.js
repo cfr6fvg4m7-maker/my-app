@@ -345,12 +345,14 @@ test('ブックマークレット: コピーした予定をTimeTreeに追加す�
     r.fulfill({ json: { event: { id: 'x' } } });
   });
   await page.goto('/tests/fixtures/timetree.html');
-  await page.evaluate((items) => navigator.clipboard.writeText(JSON.stringify({ kind: 'aki-add', v: 1, items })), [
+  const addItems = [
     { cal: '22', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), tz: 'Asia/Tokyo' },
     { cal: '22', title: '家族で外食', allDay: false, s: at(2026, 11, 28, 18), e: at(2026, 11, 28, 20), tz: 'Asia/Tokyo' }, // もうある
     { cal: '11', title: '旅行の準備', allDay: true, s: at(2026, 12, 4), e: at(2026, 12, 5), tz: 'Asia/Tokyo' },
-  ]);
+  ];
   await page.evaluate((c) => { eval(decodeURIComponent(c.slice('javascript:'.length))); }, code);
+  // 標準の入力ダイアログに貼り付ける
+  page.once('dialog', (d) => { expect(d.type()).toBe('prompt'); d.accept(JSON.stringify({ kind: 'aki-add', v: 1, items: addItems })); });
   await page.locator('#aki-timetree-overlay button', { hasText: 'コピーした予定をTimeTreeに追加' }).click();
   const ov = page.locator('#aki-timetree-overlay');
   await expect(ov).toContainText('カラオケ ・ 11/28(土) 20:00〜21:00 ・ 家族');
@@ -372,7 +374,7 @@ test('ブックマークレット: 追加する予定がコピーされていな
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   const code = await bookmarkletCode(page);
   await page.goto('/tests/fixtures/timetree.html');
-  await page.evaluate(() => navigator.clipboard.writeText('こんにちは'));
+  page.once('dialog', (d) => d.accept('こんにちは'));
   await page.evaluate((c) => { eval(decodeURIComponent(c.slice('javascript:'.length))); }, code);
   await page.locator('#aki-timetree-overlay button', { hasText: 'コピーした予定をTimeTreeに追加' }).click();
   await expect(page.locator('#aki-timetree-overlay')).toContainText('追加する予定が見つかりませんでした');
@@ -609,18 +611,21 @@ test('アプリ: 「あと少し」の「TimeTreeを開く」には、追加す�
   expect(JSON.parse(decodeURIComponent(m[1])).items[0]).toMatchObject({ cal: '11', title: 'カラオケ' });
 });
 
-test('ブックマークレット: 貼り付け欄はページの見た目の設定に負けずに見える', async ({ page }) => {
+test('ブックマークレット: 貼り付けをやめたら、もう一度貼り付けられる(ページの入力欄は使わない)', async ({ page }) => {
+  await page.clock.install({ time: NOW });
   const code = await bookmarkletCode(page);
+  await mockTimeTree(page);
   await page.goto('/tests/fixtures/timetree.html');
-  // TimeTree のように textarea を見えなくする設定
-  await page.addStyleTag({ content: 'textarea { border: none !important; background: transparent !important; height: 0 !important; }' });
-  await page.evaluate(() => { navigator.clipboard.readText = () => Promise.reject(new Error('denied')); });
   await page.evaluate((c) => { eval(decodeURIComponent(c.slice('javascript:'.length))); }, code);
+  page.once('dialog', (d) => d.dismiss());
   await page.locator('#aki-timetree-overlay button', { hasText: 'コピーした予定をTimeTreeに追加' }).click();
-  const ta = page.locator('#aki-timetree-overlay textarea');
-  await expect(ta).toBeVisible();
-  const box = await ta.boundingBox();
-  expect(box.height).toBeGreaterThan(80);
+  const ov = page.locator('#aki-timetree-overlay');
+  await expect(ov).toContainText('貼り付けられませんでした');
+  await expect(ov.locator('textarea')).toHaveCount(0);
+  const payload = { kind: 'aki-add', v: 1, items: [{ cal: '11', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), tz: 'Asia/Tokyo' }] };
+  page.once('dialog', (d) => d.accept(JSON.stringify(payload)));
+  await ov.locator('button', { hasText: 'もう一度貼り付ける' }).click();
+  await expect(ov).toContainText('カラオケ ・ 11/28(土) 20:00〜21:00 ・ 自分用カレンダー');
 });
 
 test('シフト: 土日は23:30まで(ラスト=23:30)', async ({ page }) => {

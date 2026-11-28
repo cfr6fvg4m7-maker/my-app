@@ -522,7 +522,7 @@ async function copyPendingAndGuide() {
     <p>${ok ? `追加する予定(${pendingEvents().length}件)をコピーしました。` : 'コピーできませんでした。'}</p>
     <ol class="steps">
       <li><a class="btn primary wide" href="${esc(timetreeLink() + '#aki-add=' + encodeURIComponent(pendingPayload()))}" target="_blank" rel="noopener">TimeTreeを開く</a></li>
-      <li>ブックマーク「<b>TimeTree取込</b>」を押すと、追加する予定が出ます →「<b>追加する</b>」</li>
+      <li>ブックマーク「<b>TimeTree取込</b>」→「<b>コピーした予定をTimeTreeに追加</b>」→ 出てきた入力欄を長押しして「<b>ペースト</b>」→「OK」→「<b>追加する</b>」</li>
       <li>そのまま出てくる「コピー」を押して、このアプリで「取り込む」→「貼り付けて取り込む」</li>
     </ol>
     <p class="small muted">それまでは、この予定は「追加待ち」として空き時間から外して表示します。</p>`);
