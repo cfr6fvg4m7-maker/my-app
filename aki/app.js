@@ -152,9 +152,10 @@ function render() {
   if (!has) return;
   renderSummary();
   for (const b of document.querySelectorAll('.seg button')) b.classList.toggle('on', b.dataset.view === state.ui.view);
-  for (const v of ['week', 'month', 'list']) $(`#panel-${v}`).hidden = state.ui.view !== v;
+  for (const v of ['week', 'month', 'list', 'add']) $(`#panel-${v}`).hidden = state.ui.view !== v;
   if (state.ui.view === 'week') renderWeek();
   else if (state.ui.view === 'month') renderMonth();
+  else if (state.ui.view === 'add') renderAdd();
   else renderList();
 }
 
@@ -389,27 +390,74 @@ function ttCalendars() { return state.calendars.filter((c) => c.id.startsWith('t
 function toTimeInput(t) { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
 function pendingEvents() { return state.events.filter((e) => e.pending); }
 
-function openAdd(start, end) {
+// 「＋ 予定」タブ。入力中の文字が消えないよう、フォームは一度だけ作り、下の部分だけ描き直す
+function renderAdd() {
+  const box = $('#add-box');
   const cals = ttCalendars();
+  const sig = cals.map((c) => c.id + c.name).join('|');
   if (!cals.length) {
-    openSheet('予定を入れる', `<p>先にTimeTreeの予定を取り込んでください(どのカレンダーに入れるかを選ぶため)。</p>
-      <button type="button" class="btn primary wide" data-open="import">取り込む</button>`);
+    box.dataset.sig = '';
+    box.innerHTML = `<div class="card"><p>先にTimeTreeの予定を取り込んでください(どのカレンダーに入れるかを選ぶため)。</p>
+      <button type="button" class="btn primary wide" data-open="import">取り込む</button></div>`;
+    $('#add-extra').innerHTML = '';
     return;
   }
-  const s = Number(start) || now();
-  const e = Number(end) ? Math.min(Number(end), s + 3600000) : s + 3600000;
-  const lastCal = cals.some((c) => c.id === state.ui.addCal) ? state.ui.addCal : cals[0].id;
-  openSheet('TimeTreeに予定を入れる', `
-    <form id="add-form" class="add-form" autocomplete="off">
-      <input name="title" placeholder="予定の名前(例: 買い物)" required enterkeyhint="done">
-      <div class="form-row"><span>日付</span><input type="date" name="date" value="${esc(dayKey(s))}" required></div>
-      <div class="form-row"><span>時間</span><input type="time" name="start" value="${esc(toTimeInput(s))}" required> 〜 <input type="time" name="end" value="${esc(toTimeInput(e))}" required></div>
-      <label class="check"><input type="checkbox" name="allDay"> 終日</label>
-      <div class="form-row"><span>カレンダー</span><select name="cal">${cals.map((c) => `<option value="${esc(c.id)}"${c.id === lastCal ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-      <input name="note" placeholder="メモ(なくてもOK)">
-      <button type="submit" class="btn primary wide">TimeTreeに入れる</button>
-      <p class="small muted">押すとコピーされます。次にTimeTreeを開いて、ブックマーク「TimeTree取込」→「コピーした予定をTimeTreeに追加」を押すと入ります。</p>
-    </form>`);
+  if (box.dataset.sig !== sig || !$('#add-form')) {
+    const s = Math.ceil(now() / (30 * MIN)) * 30 * MIN;
+    const lastCal = cals.some((c) => c.id === state.ui.addCal) ? state.ui.addCal : cals[0].id;
+    box.dataset.sig = sig;
+    box.innerHTML = `
+      <form id="add-form" class="add-form card" autocomplete="off">
+        <input name="title" placeholder="予定の名前(例: 買い物)" required enterkeyhint="done">
+        <div class="form-row"><span>日付</span><input type="date" name="date" value="${esc(dayKey(s))}" required></div>
+        <div class="form-row"><span>時間</span><input type="time" name="start" value="${esc(toTimeInput(s))}" required> 〜 <input type="time" name="end" value="${esc(toTimeInput(s + 3600000))}" required></div>
+        <label class="check"><input type="checkbox" name="allDay"> 終日</label>
+        <div class="form-row"><span>カレンダー</span><select name="cal">${cals.map((c) => `<option value="${esc(c.id)}"${c.id === lastCal ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <input name="note" placeholder="メモ(なくてもOK)">
+        <div id="add-slots"></div>
+        <button type="submit" class="btn primary wide">TimeTreeに入れる</button>
+      </form>`;
+  }
+  renderAddSlots();
+  const pend = pendingEvents().sort((a, b) => a.s - b.s);
+  $('#add-extra').innerHTML = pend.length ? `
+    <h3>TimeTreeに追加待ち(${pend.length}件)</h3>
+    <ul class="dlist">${pend.map((e) => `<li><button type="button" class="dl-head" data-ev="${esc(e.id)}" data-s="${e.s}"><span>${esc(e.title)}</span><span class="small muted">${esc(md(e.s))} ${e.allDay ? '終日' : esc(hhmm(e.s))}</span></button></li>`).join('')}</ul>
+    <button type="button" class="btn wide" id="pending-copy">まとめてコピーしてTimeTreeを開く</button>` : `
+    <p class="hint">入れた予定は、TimeTreeのブックマーク「TimeTree取込」→「コピーした予定をTimeTreeに追加」でTimeTreeに入ります。</p>`;
+}
+
+// 選んだ日の空き時間を並べて、押すと時間に入れる
+function renderAddSlots() {
+  const f = $('#add-form');
+  const el = $('#add-slots');
+  if (!f || !el || !f.date.value) return;
+  const d = dayInfo(parseDayKey(f.date.value));
+  el.innerHTML = d.free.length
+    ? `<p class="small muted">この日の空き(押すと時間に入ります)</p><div class="chips wrap">${d.free.map((x) => `<button type="button" class="fchip" data-fill="${x.s}" data-fill-end="${x.e}">${esc(hhmm(x.s))}〜${esc(hhmm(x.e, d.day))}</button>`).join('')}</div>`
+    : '<p class="small muted">この日は空き時間がありません</p>';
+}
+
+// 空き時間を押したとき: 「＋ 予定」タブに切り替えて、その時間を入れる
+function openAdd(start, end) {
+  closeSheet();
+  state.ui.view = 'add';
+  save();
+  render();
+  const f = $('#add-form');
+  if (!f) return;
+  fillTime(Number(start) || now(), Number(end) || 0);
+  window.scrollTo({ top: 0 });
+  f.title.focus();
+}
+function fillTime(s, end) {
+  const f = $('#add-form');
+  const e = end ? Math.min(end, s + 3600000) : s + 3600000;
+  f.date.value = dayKey(s);
+  f.start.value = toTimeInput(s);
+  f.end.value = toTimeInput(e);
+  f.allDay.checked = false;
+  renderAddSlots();
 }
 
 // 追加待ちの予定を、ブックマークで読める形にしてコピーする
@@ -553,6 +601,7 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.month !== undefined) { state.ui.monthOffset = t.dataset.month === '0' ? 0 : (state.ui.monthOffset || 0) + Number(t.dataset.month); save(); render(); return; }
   if (t.dataset.min) { state.ui.listMin = Number(t.dataset.min); save(); render(); return; }
   if (t.dataset.add !== undefined) { openAdd(t.dataset.add, t.dataset.addEnd); return; }
+  if (t.dataset.fill !== undefined) { fillTime(Number(t.dataset.fill), Number(t.dataset.fillEnd)); return; }
   if (t.id === 'pending-copy') { copyPendingAndGuide(); return; }
   if (t.dataset.unpend) {
     state.events = state.events.filter((x) => x.id !== t.dataset.unpend);
@@ -593,6 +642,7 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', async (e) => {
   const t = e.target;
+  if (t.form && t.form.id === 'add-form') { if (t.name === 'date') renderAddSlots(); return; }
   if (t.dataset.set) {
     const path = t.dataset.set.split('.');
     let v = t.type === 'checkbox' ? t.checked : t.value;
@@ -636,6 +686,8 @@ document.addEventListener('submit', (e) => {
   if (!allDay && en <= s) { toast('終わりの時刻を開始より後にしてください'); return; }
   state.ui.addCal = f.cal.value;
   state.events.push({ id: `p:${Date.now().toString(36)}`, cal: f.cal.value, title, allDay, s, e: en, note: f.note.value.trim() || undefined, pending: true });
+  f.title.value = '';
+  f.note.value = '';
   save();
   render();
   copyPendingAndGuide();

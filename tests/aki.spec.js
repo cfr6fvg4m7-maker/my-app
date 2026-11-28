@@ -112,11 +112,11 @@ test('取り込むと週・リストに空き時間が出る。カレンダー�
 
   // リスト: 土曜は 9:00〜18:00 と 20:00〜23:00
   await page.click('.seg [data-view="list"]');
-  const sat = page.locator('.dlist li', { hasText: '11/28(土)' });
+  const sat = page.locator('#panel-list .dlist li', { hasText: '11/28(土)' });
   await expect(sat).toContainText('9:00 〜 18:00');
   await expect(sat).toContainText('20:00 〜 23:00');
   // 12/5(土) は家族の「旅行」(終日)。初期設定では終日の予定は数えない
-  const trip = page.locator('.dlist li', { hasText: '12/5(土)' });
+  const trip = page.locator('#panel-list .dlist li', { hasText: '12/5(土)' });
   await expect(trip).toContainText('9:00 〜 23:00');
   await page.click('#btn-settings');
   await page.locator('[data-set="allDayBusy"]').check();
@@ -171,12 +171,12 @@ test('ICSファイル: くり返し・EXDATE・1回だけの変更(RECURRENCE-ID
   await expect(page.locator('#toast')).toContainText('「授業」を読み込みました');
   await page.click('.seg [data-view="list"]');
   // 今日(金): 9:00の回は14:00〜15:30に移動 → 10:00〜14:00 と 15:30〜23:00
-  const fri = page.locator('.dlist li', { hasText: '11/27(金)' });
+  const fri = page.locator('#panel-list .dlist li', { hasText: '11/27(金)' });
   await expect(fri).toContainText('10:00 〜 14:00');
   await expect(fri).toContainText('15:30 〜 23:00');
   // 11/30(月) は EXDATE で休み → 8:00から空き、12/4(金) はふつうに 9:00〜10:30 が予定
-  await expect(page.locator('.dlist li', { hasText: '11/30(月)' })).toContainText('8:00 〜 23:00');
-  await expect(page.locator('.dlist li', { hasText: '12/4(金)' })).toContainText('10:30 〜 23:00');
+  await expect(page.locator('#panel-list .dlist li', { hasText: '11/30(月)' })).toContainText('8:00 〜 23:00');
+  await expect(page.locator('#panel-list .dlist li', { hasText: '12/4(金)' })).toContainText('10:30 〜 23:00');
 });
 
 test('月の表示: 日ごとの空き時間と、押すとその日の予定', async ({ page }) => {
@@ -229,7 +229,7 @@ test('空き時間アプリ: コピーした授業を取り込むと予定にな
   await expect(page.locator('#toast')).toContainText('授業の時間を取り込みました');
   // 今日(金)は 10:00〜10:50 と 12:20〜23:00 が空き
   await page.click('.seg [data-view="list"]');
-  const fri = page.locator('.dlist li', { hasText: '11/27(金)' });
+  const fri = page.locator('#panel-list .dlist li', { hasText: '11/27(金)' });
   await expect(fri).toContainText('10:00 〜 10:50');
   await expect(fri).toContainText('12:20 〜 23:00');
   // 予定を押すと教室も見られる
@@ -270,7 +270,7 @@ test('授業と授業の間は「空きコマ」と表示して、空き時間�
   await expect(page.locator('#panel-week .koma')).toHaveAttribute('aria-label', '空きコマ 12:20〜14:50');
   // リスト: 今日の空きは 10:00〜10:50 と 16:20〜23:00 だけ
   await page.click('.seg [data-view="list"]');
-  const fri = page.locator('.dlist li', { hasText: '11/27(金)' });
+  const fri = page.locator('#panel-list .dlist li', { hasText: '11/27(金)' });
   await expect(fri.locator('.slot')).toHaveCount(2);
   await expect(fri).toContainText('10:00 〜 10:50');
   await expect(fri).toContainText('16:20 〜 23:00');
@@ -301,7 +301,7 @@ test('空き時間アプリ: 空きを押して予定を入れると「追加待
 
   await page.click('.seg [data-view="list"]');
   // 明日 20:00〜23:00 の空きを押す
-  await page.locator('.dlist li', { hasText: '11/28(土)' }).locator('.slot', { hasText: '20:00' }).click();
+  await page.locator('#panel-list .dlist li', { hasText: '11/28(土)' }).locator('.slot', { hasText: '20:00' }).click();
   await expect(page.locator('#add-form [name="start"]')).toHaveValue('20:00');
   await expect(page.locator('#add-form [name="end"]')).toHaveValue('21:00');
   await page.fill('#add-form [name="title"]', 'カラオケ');
@@ -313,9 +313,14 @@ test('空き時間アプリ: 空きを押して予定を入れると「追加待
   expect(data.kind).toBe('aki-add');
   expect(data.items).toEqual([{ cal: '22', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), tz: 'Asia/Tokyo' }]);
   await page.click('[data-close]');
+  // 「＋ 予定」タブに追加待ちとして出る
+  await expect(page.locator('#add-extra')).toContainText('TimeTreeに追加待ち(1件)');
+  await expect(page.locator('#add-extra')).toContainText('カラオケ');
+  await expect(page.locator('#add-form [name="title"]')).toHaveValue('');
+  await page.click('.seg [data-view="list"]');
 
   // 追加待ちの間は空き時間から外れる
-  const sat = page.locator('.dlist li', { hasText: '11/28(土)' });
+  const sat = page.locator('#panel-list .dlist li', { hasText: '11/28(土)' });
   await expect(sat).toContainText('21:00 〜 23:00');
   await expect(sat).not.toContainText('20:00 〜 23:00');
 
@@ -373,15 +378,35 @@ test('ブックマークレット: 追加する予定がコピーされていな
   await expect(page.locator('#aki-timetree-overlay')).toContainText('追加する予定が見つかりませんでした');
 });
 
-test('週の画面: 緑の空き時間を押すと、その時間で予定の入力画面が開く', async ({ page }) => {
+test('週の画面: 緑の空き時間を押すと「＋ 予定」タブが開き、その時間が入る', async ({ page }) => {
   await page.clock.install({ time: NOW });
   const { json } = await runBookmarklet(page);
   await openApp(page);
   await importJson(page, json);
   // 今日の 17:00〜23:00(バイトのあと)
   await page.locator('#panel-week .free[aria-label="空き 17:00〜23:00"]').click();
-  await expect(page.locator('#sheet-title')).toHaveText('TimeTreeに予定を入れる');
+  await expect(page.locator('.seg [data-view="add"]')).toHaveClass(/on/);
+  await expect(page.locator('#panel-add')).toBeVisible();
   await expect(page.locator('#add-form [name="date"]')).toHaveValue('2026-11-27');
   await expect(page.locator('#add-form [name="start"]')).toHaveValue('17:00');
   await expect(page.locator('#add-form [name="end"]')).toHaveValue('18:00');
+});
+
+test('「＋ 予定」タブ: 日付を選ぶとその日の空きが出て、押すと時間に入る。入力中の文字は描き直しで消えない', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+  await page.click('.seg [data-view="add"]');
+  const f = page.locator('#add-form');
+  await f.locator('[name="title"]').fill('買い物');
+  await f.locator('[name="date"]').fill('2026-11-28');
+  await f.locator('[name="date"]').dispatchEvent('change');
+  await expect(page.locator('#add-slots')).toContainText('9:00〜18:00');
+  await page.locator('#add-slots .fchip', { hasText: '20:00〜23:00' }).click();
+  await expect(f.locator('[name="start"]')).toHaveValue('20:00');
+  await expect(f.locator('[name="end"]')).toHaveValue('21:00');
+  // 1分ごとの描き直しがあっても入力は残る
+  await page.clock.runFor(61000);
+  await expect(f.locator('[name="title"]')).toHaveValue('買い物');
 });
