@@ -439,3 +439,56 @@ test('「＋ 予定」: 自分用カレンダーがないときは案内を出�
   await page.click('.seg [data-view="add"]');
   await expect(page.locator('#add-box')).toContainText('「自分用カレンダー」が見つかりません');
 });
+
+test('追加待ち: TimeTreeから戻ると「追加できた?」と聞かれ、押すと追加待ちから消える(空き時間からは外したまま)', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+  await page.click('.seg [data-view="add"]');
+  const f = page.locator('#add-form');
+  await f.locator('[name="title"]').fill('カラオケ');
+  await f.locator('[name="date"]').fill('2026-11-28');
+  await f.locator('[name="start"]').fill('20:00');
+  await f.locator('[name="end"]').fill('21:00');
+  await f.locator('button[type="submit"]').click();
+  await page.click('[data-close]');
+  // TimeTreeに行って戻ってきた
+  await page.clock.runFor(30000);
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.locator('#sheet-title')).toHaveText('TimeTreeに追加できましたか?');
+  await page.locator('#sheet #pending-done').click();
+  await expect(page.locator('#toast')).toContainText('追加待ちから消しました(1件)');
+  await expect(page.locator('#add-extra')).not.toContainText('追加待ち');
+  // 空き時間からは外れたまま
+  await page.click('.seg [data-view="list"]');
+  await expect(page.locator('#panel-list .dlist li', { hasText: '11/28(土)' })).toContainText('21:00 〜 23:00');
+  await expect(page.locator('#panel-list .dlist li', { hasText: '11/28(土)' })).not.toContainText('20:00 〜 23:00');
+  // もう一度戻ってきても、もう聞かない
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.locator('#sheet')).not.toBeVisible();
+});
+
+test('追加待ち: 「＋ 予定」タブのボタンでも消せる/取り込み直しは名前の前後の空白や秒の違いを気にしない', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+  await page.evaluate(() => {
+    const st = JSON.parse(localStorage.getItem('akiJikan'));
+    st.events.push({ id: 'p:a', cal: 'tt:11', title: 'A', allDay: false, s: new Date(2026, 10, 29, 9).getTime(), e: new Date(2026, 10, 29, 10).getTime(), pending: true });
+    st.events.push({ id: 'p:b', cal: 'tt:11', title: 'B', allDay: false, s: new Date(2026, 10, 30, 9).getTime(), e: new Date(2026, 10, 30, 10).getTime(), pending: true });
+    localStorage.setItem('akiJikan', JSON.stringify(st));
+  });
+  await page.reload();
+  // TimeTree側では「A 」(空白つき)・開始が20秒ずれて入っていた
+  const data = JSON.parse(json);
+  data.events.push({ id: 'ta', cal: '11', title: 'A ', allDay: false, s: new Date(2026, 10, 29, 9, 0, 20).getTime(), e: new Date(2026, 10, 29, 10).getTime(), stz: 'Asia/Tokyo', etz: 'Asia/Tokyo' });
+  await importJson(page, JSON.stringify(data));
+  await page.click('.seg [data-view="add"]');
+  await expect(page.locator('#add-extra')).toContainText('TimeTreeに追加待ち(1件)');
+  await expect(page.locator('#add-extra')).toContainText('B');
+  await page.click('#add-extra #pending-done');
+  await expect(page.locator('#add-extra')).not.toContainText('追加待ち');
+});

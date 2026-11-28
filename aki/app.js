@@ -436,7 +436,8 @@ function renderAdd() {
   $('#add-extra').innerHTML = pend.length ? `
     <h3>TimeTreeに追加待ち(${pend.length}件)</h3>
     <ul class="dlist">${pend.map((e) => `<li><button type="button" class="dl-head" data-ev="${esc(e.id)}" data-s="${e.s}"><span>${esc(e.title)}</span><span class="small muted">${esc(md(e.s))} ${e.allDay ? '終日' : esc(hhmm(e.s))}</span></button></li>`).join('')}</ul>
-    <button type="button" class="btn wide" id="pending-copy">まとめてコピーしてTimeTreeを開く</button>` : `
+    <button type="button" class="btn wide" id="pending-copy">まとめてコピーしてTimeTreeを開く</button>
+    <button type="button" class="btn wide" id="pending-done">TimeTreeに追加できた(追加待ちから消す)</button>` : `
     <p class="hint">入れた予定は、TimeTreeのブックマーク「TimeTree取込」→「コピーした予定をTimeTreeに追加」でTimeTreeに入ります。</p>`;
 }
 
@@ -484,6 +485,9 @@ function pendingPayload() {
 }
 async function copyPendingAndGuide() {
   const ok = await copyText(pendingPayload());
+  // TimeTreeから戻ってきたら「追加できた?」と聞くための印
+  state.ui.sentAt = now();
+  save();
   openSheet('あと少し', `
     <p>${ok ? `追加する予定(${pendingEvents().length}件)をコピーしました。` : 'コピーできませんでした。'}</p>
     <ol class="steps">
@@ -578,8 +582,10 @@ function importText(text) {
   }
   const { calendars, events } = normalizeTimeTree(data);
   // 追加待ちの予定は、TimeTreeに入った(同じ名前・同じ開始の予定がある)ものだけ消す
-  const has = new Set(events.map((e) => `${e.title}|${e.s}`));
-  const stillPending = pendingEvents().filter((p) => !has.has(`${p.title}|${p.s}`));
+  // 同じ名前(前後の空白は無視)で、開始が同じ分の予定があれば「入った」とみなす
+  const key = (e) => `${String(e.title).trim()}|${Math.round(e.s / MIN)}`;
+  const has = new Set(events.map(key));
+  const stillPending = pendingEvents().filter((p) => !has.has(key(p)));
   applyImport(calendars, events, (id) => id.startsWith('tt:'));
   state.events.push(...stillPending);
   save();
@@ -617,6 +623,8 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.add !== undefined) { openAdd(t.dataset.add, t.dataset.addEnd); return; }
   if (t.dataset.fill !== undefined) { fillTime(Number(t.dataset.fill), Number(t.dataset.fillEnd)); return; }
   if (t.id === 'pending-copy') { copyPendingAndGuide(); return; }
+  if (t.id === 'pending-done') { markPendingDone(); return; }
+  if (t.id === 'pending-not-yet') { state.ui.sentAt = null; save(); closeSheet(); return; }
   if (t.dataset.unpend) {
     state.events = state.events.filter((x) => x.id !== t.dataset.unpend);
     save(); closeSheet(); render(); toast('やめました');
@@ -742,7 +750,32 @@ render();
 importFromHash();
 // 時間がたつと「これから」の空きが変わるので、1分ごと・画面に戻ったときに描き直す
 setInterval(() => { if (!document.hidden && !$('#sheet').open) render(); }, 60000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  render();
+  askPendingDone();
+});
+
+// 追加待ちを「追加できた」にする: 次にTimeTreeを取り込むまでは、ふつうの予定として空き時間から外しておく
+function markPendingDone() {
+  const n = pendingEvents().length;
+  for (const e of state.events) if (e.pending) { e.pending = false; e.added = true; }
+  state.ui.sentAt = null;
+  save();
+  closeSheet();
+  render();
+  if (n) toast(`追加待ちから消しました(${n}件)`);
+}
+
+// TimeTreeから戻ってきたとき、追加待ちがあれば「追加できた?」と聞く
+function askPendingDone() {
+  const sent = state.ui.sentAt;
+  if (!sent || !pendingEvents().length || now() - sent < 5000 || $('#sheet').open) return;
+  openSheet('TimeTreeに追加できましたか?', `
+    <ul class="timeline">${pendingEvents().sort((a, b) => a.s - b.s).map((e) => `<li class="tl tl-pending"><span class="tt">${esc(md(e.s))} ${e.allDay ? '終日' : esc(hhmm(e.s))}</span>${esc(e.title)}</li>`).join('')}</ul>
+    <button type="button" class="btn primary wide" id="pending-done">追加できた(追加待ちから消す)</button>
+    <button type="button" class="btn wide" id="pending-not-yet">まだ</button>`);
+}
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
