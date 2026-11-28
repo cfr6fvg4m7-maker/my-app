@@ -372,3 +372,16 @@ test('ブックマークレット: 追加する予定がコピーされていな
   await page.locator('#aki-timetree-overlay button', { hasText: 'コピーした予定をTimeTreeに追加' }).click();
   await expect(page.locator('#aki-timetree-overlay')).toContainText('追加する予定が見つかりませんでした');
 });
+
+test('週の画面: 緑の空き時間を押すと、その時間で予定の入力画面が開く', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+  // 今日の 17:00〜23:00(バイトのあと)
+  await page.locator('#panel-week .free[aria-label="空き 17:00〜23:00"]').click();
+  await expect(page.locator('#sheet-title')).toHaveText('TimeTreeに予定を入れる');
+  await expect(page.locator('#add-form [name="date"]')).toHaveValue('2026-11-27');
+  await expect(page.locator('#add-form [name="start"]')).toHaveValue('17:00');
+  await expect(page.locator('#add-form [name="end"]')).toHaveValue('18:00');
+});

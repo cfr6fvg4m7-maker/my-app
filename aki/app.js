@@ -229,7 +229,7 @@ function renderWeek() {
     for (const f of d.free) {
       const top = y(d.day, f.s);
       const ht = y(d.day, f.e) - top;
-      inner += `<button type="button" class="free" data-day="${d.day}" style="top:${top}px;height:${ht}px" aria-label="空き ${esc(hhmm(f.s))}〜${esc(hhmm(f.e, d.day))}">${ht >= 22 ? `<span>${esc(hoursShort(f.e - f.s))}</span>` : ''}</button>`;
+      inner += `<button type="button" class="free" data-add="${f.s}" data-add-end="${f.e}" style="top:${top}px;height:${ht}px" aria-label="空き ${esc(hhmm(f.s))}〜${esc(hhmm(f.e, d.day))}">${ht >= 22 ? `<span>${esc(hoursShort(f.e - f.s))}</span>` : ''}</button>`;
     }
     if (d.day === today) {
       const ny = y(d.day, now());
@@ -257,7 +257,7 @@ function renderWeek() {
       <div class="hours"><div class="whead-sp"></div>${anyAllDay ? '<div class="allday"></div>' : ''}<div class="hcol" style="height:${h}px">${hours}</div></div>
       ${cols}
     </div>
-    <p class="hint">緑が空き時間。押すとその日の詳細</p>`;
+    <p class="hint">緑の空き時間を押すと、TimeTreeに予定を入れられます。日付を押すとその日の詳細</p>`;
 }
 
 // ---- 月 ----
