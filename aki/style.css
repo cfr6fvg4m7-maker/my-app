@@ -236,3 +236,8 @@ textarea { width: 100%; font-size: 12px; border-radius: 8px; border: 1px solid v
 .add-form input[name="title"], .add-form input[name="note"] { width: 100%; font: inherit; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); margin: 6px 0; }
 .add-form input[name="title"] { font-size: 18px; font-weight: 700; }
 .add-form .form-row > span { min-width: 72px; }
+.chips.wrap { flex-wrap: wrap; }
+.add-form.card { border: none; }
+#add-slots .fchip { font-size: 13px; padding: 5px 10px; }
+#panel-add h3 { margin-top: 16px; }
+.seg button { white-space: nowrap; }
