@@ -351,7 +351,7 @@ function renderShift() {
       <button type="button" class="nav-title" data-shiftweek="0">${esc(md(mon))} 〜 ${esc(md(addDays(mon, 6)))}</button>
       <button type="button" class="nav-btn" data-shiftweek="1" aria-label="次の週">›</button>
     </div>
-    <p class="hint">営業時間 11:00〜14:00・16:00〜22:30 のうち、3時間以上空いている時間で作ります(授業・予定・空きコマは除く)</p>
+    <p class="hint">営業時間 11:00〜14:00・16:00〜22:30(土日は23:30)のうち、3時間以上空いている時間で作ります(授業・予定・空きコマは除く)</p>
     ${blocks.length ? '' : '<p class="small warn">この週は3時間以上空いている時間がありません</p>'}
     <textarea id="shift-text" class="shift-text" rows="${Math.max(8, blocks.length + 6)}" data-week="${esc(week)}">${esc(value)}</textarea>
     ${keepEdit ? '<p class="small muted">手で直した文章を表示しています。<button type="button" class="link small" id="shift-regen">作り直す</button></p>' : ''}
@@ -521,8 +521,8 @@ async function copyPendingAndGuide() {
   openSheet('あと少し', `
     <p>${ok ? `追加する予定(${pendingEvents().length}件)をコピーしました。` : 'コピーできませんでした。'}</p>
     <ol class="steps">
-      <li><a class="btn primary wide" href="${timetreeLink()}" target="_blank" rel="noopener">TimeTreeを開く</a></li>
-      <li>ブックマーク「<b>TimeTree取込</b>」→「<b>コピーした予定をTimeTreeに追加</b>」→「追加する」</li>
+      <li><a class="btn primary wide" href="${esc(timetreeLink() + '#aki-add=' + encodeURIComponent(pendingPayload()))}" target="_blank" rel="noopener">TimeTreeを開く</a></li>
+      <li>ブックマーク「<b>TimeTree取込</b>」を押すと、追加する予定が出ます →「<b>追加する</b>」</li>
       <li>そのまま出てくる「コピー」を押して、このアプリで「取り込む」→「貼り付けて取り込む」</li>
     </ol>
     <p class="small muted">それまでは、この予定は「追加待ち」として空き時間から外して表示します。</p>`);
