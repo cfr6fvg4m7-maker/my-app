@@ -35,6 +35,7 @@ function load() {
     ignored: s.ignored && typeof s.ignored === 'object' ? s.ignored : {},
     importedAt: s.importedAt || null,
     classesAt: s.classesAt || null,
+    shiftboardAt: s.shiftboardAt || null,
     classesSig: s.classesSig || null,
     settings: {
       ...DEFAULT_SETTINGS, ...(s.settings || {}),
@@ -537,6 +538,10 @@ function openImport() {
       <li><button type="button" class="btn primary wide" id="paste-import">貼り付けて取り込む</button></li>
     </ol>
     <div class="also">
+      <b>シフトボードのシフトも入れる</b>
+      <p class="small muted">ショートカット「シフトをコピー」を実行してから、上の「貼り付けて取り込む」。<a href="shiftboard.html">ショートカットの作り方(最初に1回)</a>${state.shiftboardAt ? `(前回: ${esc(md(state.shiftboardAt))})` : ''}</p>
+    </div>
+    <div class="also">
       <b>manabaの授業も入れる</b>
       <p class="small muted">manaba課題アプリの「時間割」→「授業の時間を『空き時間』アプリに送る」を押してから、上の「貼り付けて取り込む」。${state.classesAt ? `(前回: ${esc(md(state.classesAt))})` : ''}</p>
     </div>
@@ -597,6 +602,16 @@ function importText(text) {
   let data;
   try { data = JSON.parse(String(text).trim()); } catch { data = null; }
   if (!data && /BEGIN:VCALENDAR/.test(text)) { importIcs(text, 'ics:paste', '貼り付けたカレンダー'); return true; }
+  if (!data && isShiftboardText(text)) {
+    const { calendars, events } = parseShiftboardText(text);
+    applyImport(calendars, events, (id) => id === SB_CAL, { timetree: false });
+    state.shiftboardAt = now();
+    save();
+    closeSheet();
+    render();
+    toast(`シフトボードのシフトを取り込みました(${events.length}件)`);
+    return true;
+  }
   if (data && data.kind === 'aki-classes') {
     const { calendars, events } = normalizeClasses(data);
     applyImport(calendars, events, (id) => id === CLASS_CAL, { timetree: false });

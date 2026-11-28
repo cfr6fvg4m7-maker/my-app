@@ -664,3 +664,21 @@ test('ブックマーク: 「自動で最新になるコード」は押すたび
   await ov.locator('button', { hasText: '予定を読み取る' }).click();
   await expect(ov.locator('a', { hasText: 'Safariでアプリを開いて取り込む' })).toHaveAttribute('href', /\/aki\/#import=/);
 });
+
+test('シフトボード: ショートカットでコピーしたシフトを取り込む(日付の書き方はいろいろOK)', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+  await importJson(page, 'シフトボード\n2026/11/28 10:00|2026/11/28 14:00|居酒屋\n2026年11月29日 午後4:00|2026年11月29日 午後10:30|居酒屋\n');
+  await expect(page.locator('#toast')).toContainText('シフトボードのシフトを取り込みました(2件)');
+  await page.click('.seg [data-view="list"]');
+  await expect(page.locator('#panel-list .dlist li', { hasText: '11/28(土)' })).toContainText('14:00 〜 18:00');
+  await expect(page.locator('#panel-list .dlist li', { hasText: '11/29(日)' })).toContainText('9:00 〜 16:00');
+  await expect(page.locator('#panel-list .dlist li', { hasText: '11/29(日)' })).toContainText('22:30 〜 23:00');
+  // もう一度取り込むと入れ替わる/TimeTreeを取り込み直しても消えない
+  await importJson(page, 'シフトボード\n2026/11/28 10:00|2026/11/28 12:00|居酒屋');
+  await importJson(page, json);
+  const st = await page.evaluate(() => JSON.parse(localStorage.getItem('akiJikan')));
+  expect(st.events.filter((e) => e.cal === 'sb:shifts').map((e) => e.title)).toEqual(['居酒屋']);
+});
