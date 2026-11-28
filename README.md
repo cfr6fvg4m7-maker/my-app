@@ -191,3 +191,6 @@ TimeTree の公式APIは2023年12月に終了したため、manaba と同じく�
 
 書き込みは Web版と同じ `POST /api/v1/calendar/{id}/event`(ページの CSRF トークン付き)。同じ名前・同じ開始時刻の予定がすでにあれば追加しない。
 ブックマークレットの中身を変えたので、`aki/bookmarklet.html` から登録し直す必要がある。
+
+## 自動テストと公開
+`claude/...` ブランチから公開ブランチ(`claude/manaba-task-pwa-728utb`)へのプルリクエストは、GitHub Actions がテスト → 合格ならマージ → 公開ページに反映されたかの確認まで自動で行う(`.github/workflows/test.yml` の `automerge`)。
