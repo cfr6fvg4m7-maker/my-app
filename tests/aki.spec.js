@@ -11,7 +11,7 @@ function ttEvent(o) {
 
 async function mockTimeTree(page) {
   await page.route('**/api/v1/calendars?since=0', (r) => r.fulfill({ json: { calendars: [
-    { id: 11, name: '自分', deactivated_at: null },
+    { id: 11, name: '自分用カレンダー', deactivated_at: null },
     { id: 22, name: '家族', deactivated_at: null },
     { id: 33, name: '古いカレンダー', deactivated_at: 123 },
   ] } }));
@@ -66,7 +66,7 @@ test('ブックマークレット: 続き(chunk)も読み、削除済み・誕�
   expect(message).toContain('2個のカレンダー・4件の予定');
   const data = JSON.parse(json);
   expect(data.kind).toBe('aki-timetree');
-  expect(data.calendars.map((c) => c.name)).toEqual(['自分', '家族']);
+  expect(data.calendars.map((c) => c.name)).toEqual(['自分用カレンダー', '家族']);
   expect(data.events.map((e) => e.title).sort()).toEqual(['ゼミ', 'バイト', '家族で外食', '旅行'].sort());
   expect(data.events.find((e) => e.title === 'ゼミ').rec).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO']);
 });
@@ -305,13 +305,13 @@ test('空き時間アプリ: 空きを押して予定を入れると「追加待
   await expect(page.locator('#add-form [name="start"]')).toHaveValue('20:00');
   await expect(page.locator('#add-form [name="end"]')).toHaveValue('21:00');
   await page.fill('#add-form [name="title"]', 'カラオケ');
-  await page.locator('#add-form [name="cal"]').selectOption({ label: '家族' });
+  await expect(page.locator('#add-form')).toContainText('カレンダー自分用カレンダー'); // 選べない(自分用だけ)
   await page.click('#add-form button[type="submit"]');
   await expect(page.locator('#sheet')).toContainText('追加する予定(1件)をコピーしました');
 
   const data = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
   expect(data.kind).toBe('aki-add');
-  expect(data.items).toEqual([{ cal: '22', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), tz: 'Asia/Tokyo' }]);
+  expect(data.items).toEqual([{ cal: '11', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), tz: 'Asia/Tokyo' }]);
   await page.click('[data-close]');
   // 「＋ 予定」タブに追加待ちとして出る
   await expect(page.locator('#add-extra')).toContainText('TimeTreeに追加待ち(1件)');
@@ -326,7 +326,7 @@ test('空き時間アプリ: 空きを押して予定を入れると「追加待
 
   // TimeTreeに入った予定を取り込むと「追加待ち」は消える。入っていない予定は残る
   const imported = JSON.parse(json);
-  imported.events.push({ id: 'new', cal: '22', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), stz: 'Asia/Tokyo', etz: 'Asia/Tokyo' });
+  imported.events.push({ id: 'new', cal: '11', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), stz: 'Asia/Tokyo', etz: 'Asia/Tokyo' });
   await importJson(page, JSON.stringify(imported));
   const st = await page.evaluate(() => JSON.parse(localStorage.getItem('akiJikan')));
   expect(st.events.filter((e) => e.pending)).toEqual([]);
@@ -409,4 +409,33 @@ test('「＋ 予定」タブ: 日付を選ぶとその日の空きが出て、�
   // 1分ごとの描き直しがあっても入力は残る
   await page.clock.runFor(61000);
   await expect(f.locator('[name="title"]')).toHaveValue('買い物');
+});
+
+test('「＋ 予定」: 前に別のカレンダーで入れた追加待ちも、自分用カレンダーに直してコピーする', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+  await page.evaluate(() => {
+    const st = JSON.parse(localStorage.getItem('akiJikan'));
+    st.events.push({ id: 'p:old', cal: 'tt:22', title: '前の予定', allDay: false, s: 1, e: 2, pending: true });
+    localStorage.setItem('akiJikan', JSON.stringify(st));
+  });
+  await page.reload();
+  await page.click('.seg [data-view="add"]');
+  await page.click('#pending-copy');
+  const data = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(data.items.map((x) => x.cal)).toEqual(['11']);
+});
+
+test('「＋ 予定」: 自分用カレンダーがないときは案内を出す', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  const data = JSON.parse(json);
+  data.calendars = data.calendars.filter((c) => c.name !== '自分用カレンダー');
+  await openApp(page);
+  await importJson(page, JSON.stringify(data));
+  await page.click('.seg [data-view="add"]');
+  await expect(page.locator('#add-box')).toContainText('「自分用カレンダー」が見つかりません');
 });

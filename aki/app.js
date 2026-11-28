@@ -150,6 +150,7 @@ function render() {
   $('#empty').hidden = has;
   $('#main-ui').hidden = !has;
   if (!has) return;
+  fixPendingCalendar();
   renderSummary();
   for (const b of document.querySelectorAll('.seg button')) b.classList.toggle('on', b.dataset.view === state.ui.view);
   for (const v of ['week', 'month', 'list', 'add']) $(`#panel-${v}`).hidden = state.ui.view !== v;
@@ -387,24 +388,35 @@ function openEvent(id, s) {
 
 // ---- TimeTreeに予定を入れる ----
 function ttCalendars() { return state.calendars.filter((c) => c.id.startsWith('tt:')); }
+// 予定を入れるのは「自分用カレンダー」だけ(家族・シフトなど共有のカレンダーには入れない)
+const OWN_CAL_NAME = '自分用カレンダー';
+function ownCalendar() {
+  const cals = ttCalendars();
+  return cals.find((c) => c.name === OWN_CAL_NAME) || cals.find((c) => c.name.includes('自分用')) || null;
+}
+// 追加待ちの予定は、必ず自分用カレンダーに入れる
+function fixPendingCalendar() {
+  const own = ownCalendar();
+  if (!own) return;
+  for (const e of state.events) if (e.pending && e.cal !== own.id) e.cal = own.id;
+}
 function toTimeInput(t) { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
 function pendingEvents() { return state.events.filter((e) => e.pending); }
 
 // 「＋ 予定」タブ。入力中の文字が消えないよう、フォームは一度だけ作り、下の部分だけ描き直す
 function renderAdd() {
   const box = $('#add-box');
-  const cals = ttCalendars();
-  const sig = cals.map((c) => c.id + c.name).join('|');
-  if (!cals.length) {
+  const own = ownCalendar();
+  const sig = own ? own.id + own.name : '';
+  if (!own) {
     box.dataset.sig = '';
-    box.innerHTML = `<div class="card"><p>先にTimeTreeの予定を取り込んでください(どのカレンダーに入れるかを選ぶため)。</p>
+    box.innerHTML = `<div class="card"><p>TimeTreeの「${OWN_CAL_NAME}」が見つかりません。TimeTreeの予定を取り込み直してください。</p>
       <button type="button" class="btn primary wide" data-open="import">取り込む</button></div>`;
     $('#add-extra').innerHTML = '';
     return;
   }
   if (box.dataset.sig !== sig || !$('#add-form')) {
     const s = Math.ceil(now() / (30 * MIN)) * 30 * MIN;
-    const lastCal = cals.some((c) => c.id === state.ui.addCal) ? state.ui.addCal : cals[0].id;
     box.dataset.sig = sig;
     box.innerHTML = `
       <form id="add-form" class="add-form card" autocomplete="off">
@@ -412,7 +424,8 @@ function renderAdd() {
         <div class="form-row"><span>日付</span><input type="date" name="date" value="${esc(dayKey(s))}" required></div>
         <div class="form-row"><span>時間</span><input type="time" name="start" value="${esc(toTimeInput(s))}" required> 〜 <input type="time" name="end" value="${esc(toTimeInput(s + 3600000))}" required></div>
         <label class="check"><input type="checkbox" name="allDay"> 終日</label>
-        <div class="form-row"><span>カレンダー</span><select name="cal">${cals.map((c) => `<option value="${esc(c.id)}"${c.id === lastCal ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <input type="hidden" name="cal" value="${esc(own.id)}">
+        <div class="form-row"><span>カレンダー</span><b>${esc(own.name)}</b></div>
         <input name="note" placeholder="メモ(なくてもOK)">
         <div id="add-slots"></div>
         <button type="submit" class="btn primary wide">TimeTreeに入れる</button>
@@ -462,6 +475,7 @@ function fillTime(s, end) {
 
 // 追加待ちの予定を、ブックマークで読める形にしてコピーする
 function pendingPayload() {
+  fixPendingCalendar();
   const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'Asia/Tokyo';
   return JSON.stringify({
     kind: 'aki-add', v: 1,
@@ -684,8 +698,9 @@ document.addEventListener('submit', (e) => {
   let s = allDay ? day : day + hm(f.start.value) * MIN;
   let en = allDay ? addDays(day, 1) : day + hm(f.end.value) * MIN;
   if (!allDay && en <= s) { toast('終わりの時刻を開始より後にしてください'); return; }
-  state.ui.addCal = f.cal.value;
-  state.events.push({ id: `p:${Date.now().toString(36)}`, cal: f.cal.value, title, allDay, s, e: en, note: f.note.value.trim() || undefined, pending: true });
+  const own = ownCalendar();
+  if (!own) { toast(`「${OWN_CAL_NAME}」が見つかりません`); return; }
+  state.events.push({ id: `p:${Date.now().toString(36)}`, cal: own.id, title, allDay, s, e: en, note: f.note.value.trim() || undefined, pending: true });
   f.title.value = '';
   f.note.value = '';
   save();
