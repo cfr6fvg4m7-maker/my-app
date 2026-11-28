@@ -45,8 +45,8 @@ async function runBookmarklet(page) {
   };
 }
 
-async function openApp(page, { stored } = {}) {
-  await page.clock.install({ time: NOW });
+async function openApp(page, { stored, time = NOW } = {}) {
+  await page.clock.install({ time });
   await page.goto('/aki/index.html');
   await page.evaluate((s) => { localStorage.clear(); if (s) localStorage.setItem('akiJikan', JSON.stringify(s)); }, stored);
   await page.reload();
@@ -492,3 +492,85 @@ test('追加待ち: 「＋ 予定」タブのボタンでも消せる/取り込�
   await page.click('#add-extra #pending-done');
   await expect(page.locator('#add-extra')).not.toContainText('追加待ち');
 });
+
+// ---- シフト希望の文章 ----
+async function withEvents(page, list) {
+  await page.evaluate((list) => {
+    const st = JSON.parse(localStorage.getItem('akiJikan'));
+    list.forEach(([id, title, s, e]) => st.events.push({ id, cal: 'tt:11', title, allDay: false, s, e }));
+    localStorage.setItem('akiJikan', JSON.stringify(st));
+  }, list);
+  await page.reload();
+}
+
+test('シフト: 次の週(月〜日)の、営業時間のうち3時間以上空いている時間で文章を作る', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.clock.install({ time: NOW }); // 金曜 → 次の週は 11/30(月)〜12/6(日)
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+  await withEvents(page, [
+    ['x1', '歯医者', at(2026, 12, 1, 12), at(2026, 12, 1, 13)],     // 火: 昼は1時間ずつしか空かない → 昼なし
+    ['x2', '飲み会', at(2026, 12, 2, 18), at(2026, 12, 2, 19, 30)], // 水: 19:30〜ラスト
+    ['x3', '用事', at(2026, 12, 3, 20, 20), at(2026, 12, 3, 21)],   // 木: 16:00〜20:00(20:20 → 20:00 に切り捨て)
+    ['x4', 'ライブ', at(2026, 12, 4, 10), at(2026, 12, 4, 23)],     // 金: なし
+  ]);
+  await page.click('.seg [data-view="shift"]');
+  await expect(page.locator('#panel-shift .nav-title')).toHaveText('11/30(月) 〜 12/6(日)');
+  const text = await page.locator('#shift-text').inputValue();
+  expect(text).toBe([
+    'お疲れ様です！',
+    '希望シフト以下の通りでよろしくお願いします。',
+    '',
+    '11月30日11時-14時', // 月: ゼミ 9:00〜10:30 のあと
+    '11月30日16時-ラスト',
+    '12月1日16時-ラスト',
+    '12月2日11時-14時',
+    '12月2日19時30分-ラスト',
+    '12月3日11時-14時',
+    '12月3日16時-20時',
+    '12月5日11時-14時',
+    '12月5日16時-ラスト',
+    '12月6日11時-14時',
+    '12月6日16時-ラスト',
+    '',
+    'よろしくお願いします！',
+  ].join('\n'));
+  await page.click('#shift-copy');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+});
+
+test('シフト: 授業の日は、授業と空きコマの時間を除く/手で直した文章は描き直しで消えない', async ({ page }) => {
+  const classes = { '1-2': { name: '情報社会論', source: 'manaba' }, '1-4': { name: '統計学', source: 'manaba' } }; // 月2限・月4限
+  await page.clock.install({ time: NOW });
+  await page.goto('/aki/index.html');
+  await page.evaluate((s) => { localStorage.clear(); localStorage.setItem('manabaPwa', JSON.stringify(s)); }, helpers.makeState({ classes }));
+  await page.reload();
+  await page.click('.seg [data-view="shift"]');
+  const ta = page.locator('#shift-text');
+  // 月曜は 10:50〜16:20 が学校 → 16:30〜ラスト(16:20 → 16:30 に切り上げ)
+  await expect(ta).toHaveValue(/11月30日16時30分-ラスト\n12月1日11時-14時/);
+  await expect(ta).not.toHaveValue(/11月30日11時/);
+  await ta.fill('お疲れ様です！ 直しました');
+  await page.locator('#panel-shift .hint').click(); // 入力から外す
+  await page.clock.runFor(61000);
+  await expect(ta).toHaveValue('お疲れ様です！ 直しました');
+  await page.click('#shift-regen');
+  await expect(ta).toHaveValue(/^お疲れ様です！\n希望シフト/);
+});
+
+test('シフト: 水曜日は上に「シフトの提出日」と出て、押すとシフトのタブが開く', async ({ page }) => {
+  const WED = at(2026, 11, 25, 9); // 水曜
+  await page.clock.install({ time: WED });
+  const { json } = await runBookmarklet(page);
+  await openApp(page, { time: WED });
+  await importJson(page, json);
+  await page.click('#summary .shift-day');
+  await expect(page.locator('#panel-shift')).toBeVisible();
+  await expect(page.locator('#panel-shift .nav-title')).toHaveText('11/30(月) 〜 12/6(日)');
+  // 水曜以外は出ない
+  await page.clock.runFor(DAY_MS);
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.locator('#summary .shift-day')).toHaveCount(0);
+});
+const DAY_MS = 86400000;

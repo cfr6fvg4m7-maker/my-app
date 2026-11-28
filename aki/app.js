@@ -153,10 +153,11 @@ function render() {
   fixPendingCalendar();
   renderSummary();
   for (const b of document.querySelectorAll('.seg button')) b.classList.toggle('on', b.dataset.view === state.ui.view);
-  for (const v of ['week', 'month', 'list', 'add']) $(`#panel-${v}`).hidden = state.ui.view !== v;
+  for (const v of ['week', 'month', 'list', 'add', 'shift']) $(`#panel-${v}`).hidden = state.ui.view !== v;
   if (state.ui.view === 'week') renderWeek();
   else if (state.ui.view === 'month') renderMonth();
   else if (state.ui.view === 'add') renderAdd();
+  else if (state.ui.view === 'shift') renderShift();
   else renderList();
 }
 
@@ -183,6 +184,7 @@ function renderSummary() {
       <span class="sum-big">${d0.total ? `あと ${esc(dur(d0.total))}` : 'なし'}</span>
       <span class="sum-sub">${esc(sub)}</span>
     </button>
+    ${new Date(t).getDay() === 3 ? `<button type="button" class="shift-day" data-view="shift" data-shift-reset="1">📝 今日はシフトの提出日です。来週のシフト希望の文章を作る ›</button>` : ''}
     ${stale ? `<button type="button" class="stale" data-open="import">最後の取り込みから${Math.floor((t - state.importedAt) / DAY)}日たちました。取り込み直す ›</button>` : ''}`;
 }
 
@@ -328,6 +330,34 @@ function renderList() {
         <li class="none"><button type="button" class="dl-head" data-day="${d.day}"><span>${esc(md(d.day))}${relDay(d.day) ? ` <span class="rel">${esc(relDay(d.day))}</span>` : ''}</span><span>空きなし</span></button></li>`)).join('')}
     </ul>
     <button type="button" class="btn primary wide" id="copy-list">空き時間をコピーして送る</button>`;
+}
+
+// ---- シフト希望(水曜に、次の週の月〜日を LINE で出す) ----
+function renderShift() {
+  const el = $('#panel-shift');
+  if (document.activeElement && document.activeElement.id === 'shift-text') return; // 入力中は描き直さない
+  const mon = addDays(nextWeekMonday(now()), (state.ui.shiftOffset || 0) * 7);
+  const days = computeDays(mon, 7);
+  const blocks = days.flatMap((d) => shiftBlocks(d.day, d.occ, state.settings));
+  const text = shiftText(blocks);
+  const week = String(mon);
+  // 手で直した文章は、描き直しで消さない(週が変わったら作り直す)
+  const old = $('#shift-text');
+  const keepEdit = old && old.dataset.week === week && old.value !== old.dataset.gen;
+  const value = keepEdit ? old.value : text;
+  el.innerHTML = `
+    <div class="nav">
+      <button type="button" class="nav-btn" data-shiftweek="-1" aria-label="前の週">‹</button>
+      <button type="button" class="nav-title" data-shiftweek="0">${esc(md(mon))} 〜 ${esc(md(addDays(mon, 6)))}</button>
+      <button type="button" class="nav-btn" data-shiftweek="1" aria-label="次の週">›</button>
+    </div>
+    <p class="hint">営業時間 11:00〜14:00・16:00〜22:30 のうち、3時間以上空いている時間で作ります(授業・予定・空きコマは除く)</p>
+    ${blocks.length ? '' : '<p class="small warn">この週は3時間以上空いている時間がありません</p>'}
+    <textarea id="shift-text" class="shift-text" rows="${Math.max(8, blocks.length + 6)}" data-week="${esc(week)}">${esc(value)}</textarea>
+    ${keepEdit ? '<p class="small muted">手で直した文章を表示しています。<button type="button" class="link small" id="shift-regen">作り直す</button></p>' : ''}
+    <button type="button" class="btn primary wide" id="shift-copy">コピーする</button>
+    <a class="btn wide" href="https://line.me/R/" target="_blank" rel="noopener">LINEを開く</a>`;
+  $('#shift-text').dataset.gen = text;
 }
 
 // ---- シート(下から出る画面) ----
@@ -616,7 +646,19 @@ document.addEventListener('click', async (e) => {
   if (t.matches('[data-close]')) { closeSheet(); return; }
   if (t.id === 'btn-import' || t.dataset.open === 'import') { openImport(); return; }
   if (t.id === 'btn-settings') { openSettings(); return; }
-  if (t.dataset.view) { state.ui.view = t.dataset.view; save(); render(); return; }
+  if (t.dataset.view) {
+    state.ui.view = t.dataset.view;
+    if (t.dataset.shiftReset) state.ui.shiftOffset = 0;
+    save(); render(); window.scrollTo({ top: 0 });
+    return;
+  }
+  if (t.dataset.shiftweek !== undefined) {
+    state.ui.shiftOffset = t.dataset.shiftweek === '0' ? 0 : (state.ui.shiftOffset || 0) + Number(t.dataset.shiftweek);
+    save(); render();
+    return;
+  }
+  if (t.id === 'shift-regen') { const ta = $('#shift-text'); ta.value = ta.dataset.gen; render(); return; }
+  if (t.id === 'shift-copy') { toast((await copyText($('#shift-text').value)) ? 'コピーしました。LINEに貼り付けて送ってください' : 'コピーできませんでした'); return; }
   if (t.dataset.week !== undefined) { state.ui.weekOffset = t.dataset.week === '0' ? 0 : Math.max(0, (state.ui.weekOffset || 0) + Number(t.dataset.week)); save(); render(); return; }
   if (t.dataset.month !== undefined) { state.ui.monthOffset = t.dataset.month === '0' ? 0 : (state.ui.monthOffset || 0) + Number(t.dataset.month); save(); render(); return; }
   if (t.dataset.min) { state.ui.listMin = Number(t.dataset.min); save(); render(); return; }

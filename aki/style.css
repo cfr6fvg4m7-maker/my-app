@@ -241,3 +241,6 @@ textarea { width: 100%; font-size: 12px; border-radius: 8px; border: 1px solid v
 #add-slots .fchip { font-size: 13px; padding: 5px 10px; }
 #panel-add h3 { margin-top: 16px; }
 .seg button { white-space: nowrap; }
+.shift-text { width: 100%; font: inherit; font-size: 15px; line-height: 1.6; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); margin-top: 8px; }
+.shift-day { display: block; width: 100%; appearance: none; border: none; background: var(--koma-bg); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; text-align: left; padding: 10px 14px; border-radius: 12px; margin: -4px 0 12px; cursor: pointer; }
+.seg button { padding: 6px 2px; font-size: 14px; }
