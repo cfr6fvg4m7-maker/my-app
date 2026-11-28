@@ -31,6 +31,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      pages: read
     steps:
       - name: プルリクエストをマージ
         env:
@@ -42,18 +43,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: claude/manaba-task-pwa-728utb
-      - name: 公開ページに反映されたか確かめる(最大10分)
+      - name: 公開(GitHub Pages)がマージしたコミットで終わったか確かめる(最大10分)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          sha=$(git rev-parse HEAD)
+          echo "マージ後のコミット: $sha"
           base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           for i in $(seq 1 40); do
-            ok=1
-            for f in sw.js aki/sw.js aki/app.js; do
-              if ! curl -fsS "$base/$f?t=$(date +%s)" -o /tmp/live || ! cmp -s /tmp/live "$f"; then ok=0; fi
-            done
-            if [ "$ok" = 1 ] && curl -fsS -o /dev/null "$base/aki/" && curl -fsS -o /dev/null "$base/"; then
-              echo "公開ページに反映されました: $base/aki/"
-              exit 0
+            build=$(gh api "repos/${{ github.repository }}/pages/builds/latest" --jq '.status + " " + .commit' 2>/dev/null || echo "? ?")
+            echo "Pages: $build"
+            if [ "$build" = "built $sha" ]; then
+              ok=1
+              for f in sw.js aki/sw.js aki/app.js aki/index.html; do
+                curl -fsS "$base/$f?t=$(date +%s)" -o /tmp/live && cmp -s /tmp/live "$f" || ok=0
+              done
+              if [ "$ok" = 1 ]; then echo "公開ページに反映されました: $base/aki/"; exit 0; fi
             fi
+            if [ "$build" = "errored $sha" ]; then echo "::error::GitHub Pages の公開に失敗しました"; exit 1; fi
             sleep 15
           done
           echo "::error::10分たっても公開ページに反映されませんでした($base)"
