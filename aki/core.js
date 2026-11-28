@@ -400,14 +400,21 @@ function komaSlots(occurrences) {
 // ---- バイトのシフト希望 ----
 // 営業時間(windows)のうち、空いていて min 分以上入れる時間。開始は30分単位で切り上げ、終わりは切り捨て。
 // 閉店(その日の最後の営業時間の終わり)まで入れるときは last: true(文章では「ラスト」)
-const SHIFT_DEFAULT = { windows: [['11:00', '14:00'], ['16:00', '22:30']], min: 180 };
+// 土日は閉店が 23:30
+const SHIFT_DEFAULT = {
+  windows: [['11:00', '14:00'], ['16:00', '22:30']],
+  weekendWindows: [['11:00', '14:00'], ['16:00', '23:30']],
+  min: 180,
+};
 function shiftBlocks(day, occurrences, settings, shift = SHIFT_DEFAULT) {
+  const wd = new Date(day).getDay();
+  const windows = (wd === 0 || wd === 6) && shift.weekendWindows ? shift.weekendWindows : shift.windows;
   const all = { ...settings, weekday: { start: '00:00', end: '00:00' }, weekend: { start: '00:00', end: '00:00' }, minFree: 0 };
   const free = freeSlots(day, occurrences, all, null);
   const step = 30 * MIN;
-  const closing = day + hm(shift.windows[shift.windows.length - 1][1]) * MIN;
+  const closing = day + hm(windows[windows.length - 1][1]) * MIN;
   const out = [];
-  for (const [ws, we] of shift.windows) {
+  for (const [ws, we] of windows) {
     const a = day + hm(ws) * MIN;
     const b = day + hm(we) * MIN;
     for (const f of free) {

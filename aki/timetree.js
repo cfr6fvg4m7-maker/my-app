@@ -330,13 +330,37 @@
     msg.textContent = '追加する予定を貼り付けてください';
     sub.textContent = '下の欄を長押しして「ペースト」→「次へ」。';
     var ta = document.createElement('textarea');
-    ta.style.cssText = 'display:block;width:100%;height:80px;font-size:12px;box-sizing:border-box';
+    // TimeTree のページの見た目の設定で見えなくならないよう、!important ではっきり見せる
+    ta.setAttribute('style', [
+      'display:block !important', 'width:100% !important', 'height:110px !important', 'box-sizing:border-box !important',
+      'font-size:16px !important', 'color:#111 !important', 'background:#fff !important', 'padding:8px !important',
+      'border:2px solid #1f9d55 !important', 'border-radius:10px !important', 'opacity:1 !important', 'visibility:visible !important',
+      '-webkit-user-select:text !important', 'user-select:text !important', 'pointer-events:auto !important'
+    ].join(';'));
+    ta.placeholder = 'ここを長押しして「ペースト」';
     area.appendChild(ta);
     btn('次へ', true).onclick = function () { useText(ta.value); };
     closeBtn();
+    try { ta.focus(); } catch (e) { /* ignore */ }
+  }
+
+  // 空き時間アプリの「TimeTreeを開く」で開いたときは、追加する予定がアドレス(#aki-add=…)に入っている
+  function itemsFromHash() {
+    var m = String(location.hash || '').match(/aki-add=([^&]+)/);
+    if (!m) return null;
+    try { return parseAdd(decodeURIComponent(m[1])); } catch (e) { return null; }
+  }
+  function clearHash() {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* ignore */ }
   }
 
   // ---- はじめの画面 ----
+  var fromHash = itemsFromHash();
+  if (fromHash && fromHash.length) {
+    clearHash();
+    addFlow(fromHash);
+    return;
+  }
   msg.textContent = 'TimeTree取込';
   sub.textContent = 'どちらをしますか?';
   btn('予定を読み取る(空き時間アプリへ)', true).onclick = function () { readAll(''); };
