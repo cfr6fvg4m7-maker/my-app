@@ -644,3 +644,23 @@ test('シフト: 土日は23:30まで(ラスト=23:30)', async ({ page }) => {
   await expect(ta).toHaveValue(/12月1日19時30分-ラスト/);
   await expect(ta).not.toHaveValue(/12月2日20時/);
 });
+
+test('ブックマーク: 「自動で最新になるコード」は押すたびに最新の中身を読み込み、版が表示される', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.clock.install({ time: NOW });
+  await page.goto('/aki/bookmarklet.html');
+  await expect(page.locator('#ver')).toHaveText(/^第\d+版$/);
+  const ver = await page.locator('#ver').textContent();
+  await page.click('#copy-short');
+  const short = await page.evaluate(() => navigator.clipboard.readText());
+  expect(short).toMatch(/^javascript:/);
+  expect(short.length).toBeLessThan(600);
+  await mockTimeTree(page);
+  await page.goto('/tests/fixtures/timetree.html');
+  await page.evaluate((c) => { eval(decodeURI(c.slice('javascript:'.length))); }, short);
+  const ov = page.locator('#aki-timetree-overlay');
+  await expect(ov).toContainText(`TimeTree取込(${ver})`);
+  // 読み込んだ中身でも、アプリのURLが分かる(読み取り後の「Safariでアプリを開いて取り込む」)
+  await ov.locator('button', { hasText: '予定を読み取る' }).click();
+  await expect(ov.locator('a', { hasText: 'Safariでアプリを開いて取り込む' })).toHaveAttribute('href', /\/aki\/#import=/);
+});
