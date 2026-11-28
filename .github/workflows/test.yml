@@ -16,3 +16,45 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
+
+  # テストに合格したら、Claude の作業ブランチ(claude/...)から公開ブランチへのプルリクエストを自動でマージし、
+  # GitHub Pages に反映されたところまで確かめる(持ち主の了承済み。CLAUDE.md 参照)。
+  # GITHUB_TOKEN のマージでは他のワークフローが動かないので、公開の確認もこのジョブの中で行う。
+  automerge:
+    needs: test
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'claude/manaba-task-pwa-728utb' &&
+      startsWith(github.head_ref, 'claude/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: プルリクエストをマージ
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr merge "${{ github.event.pull_request.number }}" --merge \
+            --repo "${{ github.repository }}" \
+            --match-head-commit "${{ github.event.pull_request.head.sha }}"
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/manaba-task-pwa-728utb
+      - name: 公開ページに反映されたか確かめる(最大10分)
+        run: |
+          base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          for i in $(seq 1 40); do
+            ok=1
+            for f in sw.js aki/sw.js aki/app.js; do
+              if ! curl -fsS "$base/$f?t=$(date +%s)" -o /tmp/live || ! cmp -s /tmp/live "$f"; then ok=0; fi
+            done
+            if [ "$ok" = 1 ] && curl -fsS -o /dev/null "$base/aki/" && curl -fsS -o /dev/null "$base/"; then
+              echo "公開ページに反映されました: $base/aki/"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::10分たっても公開ページに反映されませんでした($base)"
+          exit 1
