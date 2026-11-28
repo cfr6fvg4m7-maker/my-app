@@ -24,17 +24,21 @@
     <p>TimeTreeのWeb版(timetreeapp.com)で使う、予定の読み取り用ブックマークです。最初に1回だけ設定します。</p>
 
     <div class="card">
-      <button id="copy" class="btn primary wide" disabled>コードをコピー</button>
+      <button id="copy-short" class="btn primary wide" disabled>自動で最新になるコードをコピー(おすすめ)</button>
+      <button id="copy" class="btn wide" style="margin-top:8px" disabled>長いコードをコピー(上のコードで動かないとき)</button>
       <p id="status" class="small muted" style="margin:8px 0 0">読み込み中…</p>
+      <p class="small muted" style="margin:4px 0 0">今の最新は <b id="ver">-</b>。TimeTreeでブックマークを押したときの画面の一番上に、同じ版が出ていればOKです。</p>
     </div>
 
     <h2>iPhone(Safari)での設定</h2>
     <ol>
-      <li>このページを表示したまま、Safari下の<b>共有ボタン</b>(□に↑)→「<b>ブックマークを追加</b>」。名前を「<b>TimeTree取込</b>」にして保存。</li>
-      <li>上の「<b>コードをコピー</b>」を押す。</li>
-      <li>Safariの<b>ブックマーク</b>(本のマーク)→「<b>編集</b>」→ さっきの「TimeTree取込」をタップ。</li>
-      <li>アドレス欄の文字を<b>全部消して</b>、長押しで「<b>ペースト</b>」→「完了」。</li>
+      <li>このページを表示したまま、Safari下の<b>共有ボタン</b>(□に↑)→「<b>ブックマークを追加</b>」。名前を「<b>TimeTree取込</b>」にして保存。(もうあるときは不要)</li>
+      <li>上の「<b>自動で最新になるコードをコピー</b>」を押す。</li>
+      <li>Safariの<b>ブックマーク</b>(本のマーク)→「<b>編集</b>」→「TimeTree取込」をタップ。</li>
+      <li>2段目のアドレス欄の文字を ⓧ で<b>全部消して</b>、長押しで「<b>ペースト</b>」→「完了」。</li>
+      <li>TimeTreeのページでブックマークを押して、一番上に「<b>TimeTree取込(第◯版)</b>」と出れば完了。</li>
     </ol>
+    <p class="small muted">「自動で最新になるコード」は、押すたびにこのサイトから最新の中身を読み込むので、アプリが新しくなっても登録し直しはいりません。押しても「読み込めませんでした」と出るときだけ、「長いコード」で登録してください(長いコードは、中身が新しくなるたびに登録し直しが必要です)。</p>
 
     <h2>使い方</h2>
     <p>TimeTreeのページでブックマーク「<b>TimeTree取込</b>」を押すと、2つのボタンが出ます。</p>
@@ -70,6 +74,22 @@
         .replace(/__APP_URL__/g, appUrl)
         .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('//')).join('\n');
       const code = 'javascript:' + encodeURIComponent(src);
+      const v = src.match(/var VERSION = (\d+)/);
+      document.getElementById('ver').textContent = v ? `第${v[1]}版` : '-';
+      // 自動で最新になるコード: 押すたびに timetree.js をこのサイトから読み込む
+      const jsUrl = new URL('timetree.js', location.href).href;
+      const shortCode = encodeURI("javascript:(function(){var s=document.createElement('script');s.src='" + jsUrl +
+        "?t='+Date.now();s.onerror=function(){alert('読み込めませんでした。通信状態を確かめるか、「長いコード」で登録してください。')};document.body.appendChild(s)})()");
+      const shortBtn = document.getElementById('copy-short');
+      shortBtn.disabled = false;
+      shortBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(shortCode);
+          status.textContent = 'コピーしました。手順3へ進んでください。';
+        } catch {
+          status.textContent = 'コピーできませんでした。';
+        }
+      });
       document.getElementById('code').value = code;
       document.getElementById('drag').href = code;
       copyBtn.disabled = false;

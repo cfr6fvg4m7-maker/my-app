@@ -13,7 +13,13 @@
  * パスワードは扱わない。追加は、画面で内容を確かめて「追加する」を押したときだけ行う。
  */
 (function () {
+  // 中身を変えたら上げる(画面に「第◯版」と出るので、古いブックマークかどうか分かる)
+  var VERSION = 4;
   var APP_URL = '__APP_URL__';
+  // 「自動で最新になるコード」(このファイルを読み込む形)で実行されたときは、読み込み元からアプリのURLを求める
+  if (APP_URL.indexOf('http') !== 0 && document.currentScript && document.currentScript.src) {
+    APP_URL = document.currentScript.src.replace(/timetree\.js.*$/, '');
+  }
   var ID = 'aki-timetree-overlay';
   var HEADERS = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Timetreea': 'web/2.1.0/ja' };
 
@@ -351,7 +357,7 @@
     addFlow(fromHash);
     return;
   }
-  msg.textContent = 'TimeTree取込';
+  msg.textContent = 'TimeTree取込(第' + VERSION + '版)';
   sub.textContent = 'どちらをしますか?';
   btn('予定を読み取る(空き時間アプリへ)', true).onclick = function () { readAll(''); };
   btn('コピーした予定をTimeTreeに追加', false).onclick = pasteForAdd;

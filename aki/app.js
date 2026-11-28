@@ -525,7 +525,8 @@ async function copyPendingAndGuide() {
       <li>ブックマーク「<b>TimeTree取込</b>」→「<b>コピーした予定をTimeTreeに追加</b>」→ 出てきた入力欄を長押しして「<b>ペースト</b>」→「OK」→「<b>追加する</b>」</li>
       <li>そのまま出てくる「コピー」を押して、このアプリで「取り込む」→「貼り付けて取り込む」</li>
     </ol>
-    <p class="small muted">それまでは、この予定は「追加待ち」として空き時間から外して表示します。</p>`);
+    <p class="small muted">それまでは、この予定は「追加待ち」として空き時間から外して表示します。</p>
+    <p class="small muted">ブックマークを押したとき「コピーした予定をTimeTreeに追加」が出ない・一番上に「第◯版」と出ないときは、ブックマークが古いので<a href="bookmarklet.html">登録し直して</a>ください。</p>`);
 }
 
 function openImport() {
