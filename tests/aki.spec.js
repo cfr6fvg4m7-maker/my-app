@@ -37,6 +37,7 @@ async function runBookmarklet(page) {
   await mockTimeTree(page);
   await page.goto('/tests/fixtures/timetree.html');
   await page.evaluate((c) => { eval(decodeURIComponent(c.slice('javascript:'.length))); }, code);
+  await page.locator('#aki-timetree-overlay button', { hasText: '予定を読み取る' }).click();
   await expect(page.locator('#aki-timetree-overlay')).toContainText('読み取りました');
   return {
     message: await page.$eval('#aki-timetree-overlay div', (e) => e.textContent),
@@ -87,6 +88,7 @@ test('ブックマークレット: ログインしていないとき', async ({ 
   await page.route('**/api/v1/calendars?since=0', (r) => r.fulfill({ status: 401, body: '' }));
   await page.goto('/tests/fixtures/timetree.html');
   await page.evaluate((c) => { eval(decodeURIComponent(c.slice('javascript:'.length))); }, code);
+  await page.locator('#aki-timetree-overlay button', { hasText: '予定を読み取る' }).click();
   await expect(page.locator('#aki-timetree-overlay')).toContainText('ログインしていない');
 });
 
@@ -281,4 +283,92 @@ test('授業と授業の間は「空きコマ」と表示して、空き時間�
   await page.locator('[data-set="komaFree"]').check();
   await page.click('[data-close]');
   await expect(fri).toContainText('12:20 〜 14:50');
+});
+
+// ---- 空き時間アプリから TimeTree に予定を入れる ----
+async function bookmarkletCode(page) {
+  await page.goto('/aki/bookmarklet.html');
+  await page.waitForFunction(() => document.getElementById('code').value.startsWith('javascript:'));
+  return page.$eval('#code', (e) => e.value);
+}
+
+test('空き時間アプリ: 空きを押して予定を入れると「追加待ち」になり、ブックマーク用にコピーされる', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+
+  await page.click('.seg [data-view="list"]');
+  // 明日 20:00〜23:00 の空きを押す
+  await page.locator('.dlist li', { hasText: '11/28(土)' }).locator('.slot', { hasText: '20:00' }).click();
+  await expect(page.locator('#add-form [name="start"]')).toHaveValue('20:00');
+  await expect(page.locator('#add-form [name="end"]')).toHaveValue('21:00');
+  await page.fill('#add-form [name="title"]', 'カラオケ');
+  await page.locator('#add-form [name="cal"]').selectOption({ label: '家族' });
+  await page.click('#add-form button[type="submit"]');
+  await expect(page.locator('#sheet')).toContainText('追加する予定(1件)をコピーしました');
+
+  const data = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(data.kind).toBe('aki-add');
+  expect(data.items).toEqual([{ cal: '22', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), tz: 'Asia/Tokyo' }]);
+  await page.click('[data-close]');
+
+  // 追加待ちの間は空き時間から外れる
+  const sat = page.locator('.dlist li', { hasText: '11/28(土)' });
+  await expect(sat).toContainText('21:00 〜 23:00');
+  await expect(sat).not.toContainText('20:00 〜 23:00');
+
+  // TimeTreeに入った予定を取り込むと「追加待ち」は消える。入っていない予定は残る
+  const imported = JSON.parse(json);
+  imported.events.push({ id: 'new', cal: '22', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), stz: 'Asia/Tokyo', etz: 'Asia/Tokyo' });
+  await importJson(page, JSON.stringify(imported));
+  const st = await page.evaluate(() => JSON.parse(localStorage.getItem('akiJikan')));
+  expect(st.events.filter((e) => e.pending)).toEqual([]);
+  expect(st.events.filter((e) => e.title === 'カラオケ').length).toBe(1);
+});
+
+test('ブックマークレット: コピーした予定をTimeTreeに追加する(CSRFトークン付き・同じ予定は入れない)', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.clock.install({ time: NOW });
+  const code = await bookmarkletCode(page);
+  await mockTimeTree(page);
+  await page.route('**/api/v1/user', (r) => r.fulfill({ json: { user: { id: 777 } } }));
+  const posted = [];
+  await page.route('**/api/v1/calendar/*/event', (r) => {
+    posted.push({ url: r.request().url(), headers: r.request().headers(), body: JSON.parse(r.request().postData()) });
+    r.fulfill({ json: { event: { id: 'x' } } });
+  });
+  await page.goto('/tests/fixtures/timetree.html');
+  await page.evaluate((items) => navigator.clipboard.writeText(JSON.stringify({ kind: 'aki-add', v: 1, items })), [
+    { cal: '22', title: 'カラオケ', allDay: false, s: at(2026, 11, 28, 20), e: at(2026, 11, 28, 21), tz: 'Asia/Tokyo' },
+    { cal: '22', title: '家族で外食', allDay: false, s: at(2026, 11, 28, 18), e: at(2026, 11, 28, 20), tz: 'Asia/Tokyo' }, // もうある
+    { cal: '11', title: '旅行の準備', allDay: true, s: at(2026, 12, 4), e: at(2026, 12, 5), tz: 'Asia/Tokyo' },
+  ]);
+  await page.evaluate((c) => { eval(decodeURIComponent(c.slice('javascript:'.length))); }, code);
+  await page.locator('#aki-timetree-overlay button', { hasText: 'コピーした予定をTimeTreeに追加' }).click();
+  const ov = page.locator('#aki-timetree-overlay');
+  await expect(ov).toContainText('カラオケ ・ 11/28(土) 20:00〜21:00 ・ 家族');
+  expect(posted).toHaveLength(0); // 「追加する」を押すまでは書き込まない
+  await ov.locator('button', { hasText: '追加する' }).click();
+  await expect(ov).toContainText('追加しました: 2件(すでにあった1件は追加せず)');
+  await expect(ov).toContainText('読み取りました'); // そのまま読み直してコピーできる
+
+  expect(posted).toHaveLength(2);
+  expect(posted[0].url).toMatch(/\/api\/v1\/calendar\/22\/event$/);
+  expect(posted[0].headers['x-csrf-token']).toBe('test-csrf-123');
+  expect(posted[0].body).toMatchObject({ title: 'カラオケ', all_day: false, start_at: at(2026, 11, 28, 20), end_at: at(2026, 11, 28, 21), start_timezone: 'Asia/Tokyo', attendees: [777], category: 1, label_id: 1 });
+  // 終日はUTCの0時・終わりは最終日
+  expect(posted[1].url).toMatch(/\/calendar\/11\/event$/);
+  expect(posted[1].body).toMatchObject({ title: '旅行の準備', all_day: true, start_at: Date.UTC(2026, 11, 4), end_at: Date.UTC(2026, 11, 4), start_timezone: 'UTC' });
+});
+
+test('ブックマークレット: 追加する予定がコピーされていないとき', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const code = await bookmarkletCode(page);
+  await page.goto('/tests/fixtures/timetree.html');
+  await page.evaluate(() => navigator.clipboard.writeText('こんにちは'));
+  await page.evaluate((c) => { eval(decodeURIComponent(c.slice('javascript:'.length))); }, code);
+  await page.locator('#aki-timetree-overlay button', { hasText: 'コピーした予定をTimeTreeに追加' }).click();
+  await expect(page.locator('#aki-timetree-overlay')).toContainText('追加する予定が見つかりませんでした');
 });

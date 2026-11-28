@@ -219,7 +219,7 @@ function renderWeek() {
       const bot = Math.min(h, y(d.day, Math.min(o.e, addDays(d.day, 1))));
       if (bot <= 0 || top >= h) continue;
       const ht = Math.max(12, bot - top);
-      inner += `<button type="button" class="busy" data-ev="${esc(o.ev.id)}" data-s="${o.s}" style="top:${top}px;height:${ht}px" aria-label="${esc(o.ev.title)}">${ht >= 24 ? `<span>${esc(o.ev.title)}</span>` : ''}</button>`;
+      inner += `<button type="button" class="busy${o.ev.pending ? ' pending' : ''}" data-ev="${esc(o.ev.id)}" data-s="${o.s}" style="top:${top}px;height:${ht}px" aria-label="${esc(o.ev.title)}">${ht >= 24 ? `<span>${esc(o.ev.title)}</span>` : ''}</button>`;
     }
     for (const k of d.koma) {
       const top = y(d.day, k.s);
@@ -321,7 +321,7 @@ function renderList() {
           <button type="button" class="dl-head" data-day="${d.day}">
             <span>${esc(md(d.day))}${relDay(d.day) ? ` <span class="rel">${esc(relDay(d.day))}</span>` : ''}</span>
           </button>
-          ${d.free.map((f) => `<div class="slot"><span class="st">${esc(hhmm(f.s))} 〜 ${esc(hhmm(f.e, d.day))}</span><span class="sd">${esc(dur(f.e - f.s))}</span></div>`).join('')}
+          ${d.free.map((f) => `<button type="button" class="slot" data-add="${f.s}" data-add-end="${f.e}"><span class="st">${esc(hhmm(f.s))} 〜 ${esc(hhmm(f.e, d.day))}</span><span class="sd">${esc(dur(f.e - f.s))} ＋</span></button>`).join('')}
         </li>` : `
         <li class="none"><button type="button" class="dl-head" data-day="${d.day}"><span>${esc(md(d.day))}${relDay(d.day) ? ` <span class="rel">${esc(relDay(d.day))}</span>` : ''}</span><span>空きなし</span></button></li>`)).join('')}
     </ul>
@@ -346,13 +346,14 @@ function openDay(day) {
   items.sort((a, b) => (b.all ? 1 : 0) - (a.all ? 1 : 0) || a.s - b.s);
   const row = (x) => {
     if (x.koma) return `<li class="tl tl-koma"><span class="tt">${esc(hhmm(x.s))}〜${esc(hhmm(x.e, day))}</span>空きコマ ${esc(dur(x.e - x.s))}</li>`;
-    if (x.free) return `<li class="tl tl-free"><span class="tt">${esc(hhmm(x.s))}〜${esc(hhmm(x.e, day))}</span><b>空き ${esc(dur(x.e - x.s))}</b></li>`;
+    if (x.free) return `<li class="tl tl-free"><span class="tt">${esc(hhmm(x.s))}〜${esc(hhmm(x.e, day))}</span><b>空き ${esc(dur(x.e - x.s))}</b><button type="button" class="add-mini" data-add="${x.s}" data-add-end="${x.e}">＋ 予定</button></li>`;
     const time = x.all ? '終日' : `${x.s < day ? '前日〜' : hhmm(x.s)}〜${x.e > addDays(day, 1) ? '翌日' : hhmm(x.e, day)}`;
-    return `<li class="tl"><span class="tt">${esc(time)}</span><button type="button" class="link" data-ev="${esc(x.ev.id)}" data-s="${x.s}">${esc(x.ev.title)}</button> <span class="small muted">${esc(calName(x.ev.cal))}</span></li>`;
+    return `<li class="tl${x.ev.pending ? ' tl-pending' : ''}"><span class="tt">${esc(time)}</span><button type="button" class="link" data-ev="${esc(x.ev.id)}" data-s="${x.s}">${esc(x.ev.title)}</button> <span class="small muted">${x.ev.pending ? 'TimeTreeに追加待ち' : esc(calName(x.ev.cal))}</span></li>`;
   };
   const text = shareText([d]);
   openSheet(`${md(day)}${relDay(day) ? `(${relDay(day)})` : ''}`, `
     <ul class="timeline">${items.length ? items.map(row).join('') : '<li class="muted">予定も空きもありません</li>'}</ul>
+    <button type="button" class="btn wide" data-add="${Math.max(day + 12 * 3600000, d.free[0] ? d.free[0].s : 0)}">＋ この日にTimeTreeの予定を入れる</button>
     ${text ? `<button type="button" class="btn primary wide" data-copy="${esc(text)}">この日の空き時間をコピー</button>` : ''}`);
 }
 
@@ -364,6 +365,16 @@ function openEvent(id, s) {
   const when = ev.allDay
     ? `${md(start)}${end - start > DAY ? ` 〜 ${md(end - DAY)}` : ''} 終日`
     : `${md(start)} ${hhmm(start)} 〜 ${startOfDay(end) !== startOfDay(start) ? md(end) + ' ' : ''}${hhmm(end)}`;
+  if (ev.pending) {
+    openSheet('TimeTreeに追加待ち', `
+      <p class="ev-title">${esc(ev.title)}</p>
+      <p>${esc(when)}</p>
+      <p class="small muted">カレンダー: ${esc(calName(ev.cal))}</p>
+      <p class="small">まだTimeTreeには入っていません。TimeTreeを開いて、ブックマーク「TimeTree取込」→「コピーした予定をTimeTreeに追加」を押してください。</p>
+      <button type="button" class="btn primary wide" id="pending-copy">もう一度コピーしてTimeTreeを開く</button>
+      <button type="button" class="btn wide danger" data-unpend="${esc(ev.id)}">この予定をやめる</button>`);
+    return;
+  }
   openSheet('予定', `
     <p class="ev-title">${esc(ev.title)}</p>
     <p>${esc(when)}${ev.rec ? ' <span class="small muted">(くり返し)</span>' : ''}</p>
@@ -371,6 +382,54 @@ function openEvent(id, s) {
     <p class="small muted">カレンダー: ${esc(calName(ev.cal))}</p>
     <label class="check"><input type="checkbox" data-ignore="${esc(ev.id)}" ${state.ignored[ev.id] ? 'checked' : ''}> この予定があっても「空き」として数える</label>
     <p class="small muted">「リマインダー的な予定」「行かなくてもいい予定」などに使います。くり返しの予定は全部の回が対象です。</p>`);
+}
+
+// ---- TimeTreeに予定を入れる ----
+function ttCalendars() { return state.calendars.filter((c) => c.id.startsWith('tt:')); }
+function toTimeInput(t) { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
+function pendingEvents() { return state.events.filter((e) => e.pending); }
+
+function openAdd(start, end) {
+  const cals = ttCalendars();
+  if (!cals.length) {
+    openSheet('予定を入れる', `<p>先にTimeTreeの予定を取り込んでください(どのカレンダーに入れるかを選ぶため)。</p>
+      <button type="button" class="btn primary wide" data-open="import">取り込む</button>`);
+    return;
+  }
+  const s = Number(start) || now();
+  const e = Number(end) ? Math.min(Number(end), s + 3600000) : s + 3600000;
+  const lastCal = cals.some((c) => c.id === state.ui.addCal) ? state.ui.addCal : cals[0].id;
+  openSheet('TimeTreeに予定を入れる', `
+    <form id="add-form" class="add-form" autocomplete="off">
+      <input name="title" placeholder="予定の名前(例: 買い物)" required enterkeyhint="done">
+      <div class="form-row"><span>日付</span><input type="date" name="date" value="${esc(dayKey(s))}" required></div>
+      <div class="form-row"><span>時間</span><input type="time" name="start" value="${esc(toTimeInput(s))}" required> 〜 <input type="time" name="end" value="${esc(toTimeInput(e))}" required></div>
+      <label class="check"><input type="checkbox" name="allDay"> 終日</label>
+      <div class="form-row"><span>カレンダー</span><select name="cal">${cals.map((c) => `<option value="${esc(c.id)}"${c.id === lastCal ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <input name="note" placeholder="メモ(なくてもOK)">
+      <button type="submit" class="btn primary wide">TimeTreeに入れる</button>
+      <p class="small muted">押すとコピーされます。次にTimeTreeを開いて、ブックマーク「TimeTree取込」→「コピーした予定をTimeTreeに追加」を押すと入ります。</p>
+    </form>`);
+}
+
+// 追加待ちの予定を、ブックマークで読める形にしてコピーする
+function pendingPayload() {
+  const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'Asia/Tokyo';
+  return JSON.stringify({
+    kind: 'aki-add', v: 1,
+    items: pendingEvents().map((e) => ({ cal: e.cal.replace(/^tt:/, ''), title: e.title, allDay: !!e.allDay, s: e.s, e: e.e, tz, note: e.note || undefined })),
+  });
+}
+async function copyPendingAndGuide() {
+  const ok = await copyText(pendingPayload());
+  openSheet('あと少し', `
+    <p>${ok ? `追加する予定(${pendingEvents().length}件)をコピーしました。` : 'コピーできませんでした。'}</p>
+    <ol class="steps">
+      <li><a class="btn primary wide" href="${timetreeLink()}" target="_blank" rel="noopener">TimeTreeを開く</a></li>
+      <li>ブックマーク「<b>TimeTree取込</b>」→「<b>コピーした予定をTimeTreeに追加</b>」→「追加する」</li>
+      <li>そのまま出てくる「コピー」を押して、このアプリで「取り込む」→「貼り付けて取り込む」</li>
+    </ol>
+    <p class="small muted">それまでは、この予定は「追加待ち」として空き時間から外して表示します。</p>`);
 }
 
 function openImport() {
@@ -456,10 +515,15 @@ function importText(text) {
     return false;
   }
   const { calendars, events } = normalizeTimeTree(data);
+  // 追加待ちの予定は、TimeTreeに入った(同じ名前・同じ開始の予定がある)ものだけ消す
+  const has = new Set(events.map((e) => `${e.title}|${e.s}`));
+  const stillPending = pendingEvents().filter((p) => !has.has(`${p.title}|${p.s}`));
   applyImport(calendars, events, (id) => id.startsWith('tt:'));
+  state.events.push(...stillPending);
+  save();
   closeSheet();
   render();
-  toast(`取り込みました(${calendars.length}カレンダー・${events.length}件)`);
+  toast(`取り込みました(${calendars.length}カレンダー・${events.length}件)${stillPending.length ? ` ・追加待ち ${stillPending.length}件` : ''}`);
   return true;
 }
 
@@ -488,6 +552,13 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.week !== undefined) { state.ui.weekOffset = t.dataset.week === '0' ? 0 : Math.max(0, (state.ui.weekOffset || 0) + Number(t.dataset.week)); save(); render(); return; }
   if (t.dataset.month !== undefined) { state.ui.monthOffset = t.dataset.month === '0' ? 0 : (state.ui.monthOffset || 0) + Number(t.dataset.month); save(); render(); return; }
   if (t.dataset.min) { state.ui.listMin = Number(t.dataset.min); save(); render(); return; }
+  if (t.dataset.add !== undefined) { openAdd(t.dataset.add, t.dataset.addEnd); return; }
+  if (t.id === 'pending-copy') { copyPendingAndGuide(); return; }
+  if (t.dataset.unpend) {
+    state.events = state.events.filter((x) => x.id !== t.dataset.unpend);
+    save(); closeSheet(); render(); toast('やめました');
+    return;
+  }
   if (t.dataset.ev) { openEvent(t.dataset.ev, t.dataset.s); return; }
   if (t.dataset.day) { openDay(Number(t.dataset.day)); return; }
   if (t.dataset.copy) { toast((await copyText(t.dataset.copy)) ? 'コピーしました' : 'コピーできませんでした'); return; }
@@ -550,6 +621,24 @@ document.addEventListener('change', async (e) => {
       importIcs(text, 'ics:' + hashId(f.name), f.name.replace(/\.ics$/i, ''));
     }
   }
+});
+
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'add-form') return;
+  e.preventDefault();
+  const f = e.target;
+  const title = f.title.value.trim();
+  if (!title) return;
+  const day = parseDayKey(f.date.value);
+  const allDay = f.allDay.checked;
+  let s = allDay ? day : day + hm(f.start.value) * MIN;
+  let en = allDay ? addDays(day, 1) : day + hm(f.end.value) * MIN;
+  if (!allDay && en <= s) { toast('終わりの時刻を開始より後にしてください'); return; }
+  state.ui.addCal = f.cal.value;
+  state.events.push({ id: `p:${Date.now().toString(36)}`, cal: f.cal.value, title, allDay, s, e: en, note: f.note.value.trim() || undefined, pending: true });
+  save();
+  render();
+  copyPendingAndGuide();
 });
 
 // 下に引いて閉じる代わりに、外側を押したら閉じる
