@@ -1,6 +1,6 @@
 // 空き時間アプリをオフラインでも開けるようにする Service Worker(/aki/ の中だけ)。
 // アプリのファイルを変更したら CACHE の番号を上げる。
-const CACHE = 'aki-v6';
+const CACHE = 'aki-v7';
 const ASSETS = [
   './',
   'index.html',

@@ -180,7 +180,7 @@ main { padding: 12px 16px 32px; max-width: 760px; margin: 0 auto; }
 .dl-head { display: flex; justify-content: space-between; align-items: baseline; width: 100%; appearance: none; border: none; background: none; color: var(--text); font: inherit; font-weight: 700; padding: 0; cursor: pointer; }
 .rel { font-size: 12px; font-weight: 400; color: var(--primary); margin-left: 4px; }
 .dlist li.none .dl-head { font-weight: 400; color: var(--muted); font-size: 14px; }
-.slot { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0 0; }
+.slot { display: flex; justify-content: space-between; align-items: baseline; width: 100%; padding: 3px 0 0; appearance: none; border: none; background: none; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 .slot .st { font-size: 17px; font-weight: 700; color: var(--free-text); font-variant-numeric: tabular-nums; }
 .slot .sd { font-size: 13px; color: var(--muted); }
 
@@ -230,3 +230,9 @@ textarea { width: 100%; font-size: 12px; border-radius: 8px; border: 1px solid v
   border: 1.5px dashed var(--koma); border-radius: 6px; background: var(--koma-bg); color: var(--koma); font-size: 9px; font-weight: 700; text-align: center; z-index: 1;
 }
 .tl.tl-koma { border-left-color: var(--koma); color: var(--koma); }
+.busy.pending { background: var(--card); border: 1.5px dashed var(--primary); color: var(--primary); }
+.tl.tl-pending { border-left-color: var(--primary); border-left-style: dashed; }
+.add-mini { float: right; appearance: none; border: 1px solid var(--free); background: var(--card); color: var(--free-text); font: inherit; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 8px; cursor: pointer; }
+.add-form input[name="title"], .add-form input[name="note"] { width: 100%; font: inherit; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); margin: 6px 0; }
+.add-form input[name="title"] { font-size: 18px; font-weight: 700; }
+.add-form .form-row > span { min-width: 72px; }
