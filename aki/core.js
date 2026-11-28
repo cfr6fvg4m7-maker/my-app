@@ -397,6 +397,50 @@ function komaSlots(occurrences) {
   return out.filter((k) => k.e - k.s >= KOMA_MIN * MIN);
 }
 
+// ---- バイトのシフト希望 ----
+// 営業時間(windows)のうち、空いていて min 分以上入れる時間。開始は30分単位で切り上げ、終わりは切り捨て。
+// 閉店(その日の最後の営業時間の終わり)まで入れるときは last: true(文章では「ラスト」)
+const SHIFT_DEFAULT = { windows: [['11:00', '14:00'], ['16:00', '22:30']], min: 180 };
+function shiftBlocks(day, occurrences, settings, shift = SHIFT_DEFAULT) {
+  const all = { ...settings, weekday: { start: '00:00', end: '00:00' }, weekend: { start: '00:00', end: '00:00' }, minFree: 0 };
+  const free = freeSlots(day, occurrences, all, null);
+  const step = 30 * MIN;
+  const closing = day + hm(shift.windows[shift.windows.length - 1][1]) * MIN;
+  const out = [];
+  for (const [ws, we] of shift.windows) {
+    const a = day + hm(ws) * MIN;
+    const b = day + hm(we) * MIN;
+    for (const f of free) {
+      let s = Math.max(f.s, a);
+      let e = Math.min(f.e, b);
+      if (e <= s) continue;
+      if (s !== a) s = day + Math.ceil((s - day) / step) * step;
+      if (e !== b) e = day + Math.floor((e - day) / step) * step;
+      if (e - s >= shift.min * MIN) out.push({ s, e, last: e === closing });
+    }
+  }
+  return out;
+}
+
+// 「11月2日19時30分-ラスト」のような1行
+function shiftJa(t) {
+  const d = new Date(t);
+  return `${d.getHours()}時${d.getMinutes() ? `${d.getMinutes()}分` : ''}`;
+}
+function shiftLine(b) {
+  const d = new Date(b.s);
+  return `${d.getMonth() + 1}月${d.getDate()}日${shiftJa(b.s)}-${b.last ? 'ラスト' : shiftJa(b.e)}`;
+}
+function shiftText(blocks) {
+  return ['お疲れ様です！', '希望シフト以下の通りでよろしくお願いします。', '', ...blocks.map(shiftLine), '', 'よろしくお願いします！'].join('\n');
+}
+
+// シフトを出す週: 次の週の月曜(水曜に提出する分)
+function nextWeekMonday(t) {
+  const d = new Date(startOfDay(t));
+  return addDays(d.getTime(), 7 - ((d.getDay() + 6) % 7));
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { CLASS_CAL, normalizeClasses, DAY, MIN, startOfDay, addDays, dayKey, parseDayKey, hm, zonedToMs, localMidnightOf, parseIcsTime, parseRRule, expandEvent, normalizeTimeTree, parseIcs, dayWindow, mergeIntervals, freeSlots, classSpan, komaSlots };
+  module.exports = { CLASS_CAL, normalizeClasses, DAY, MIN, startOfDay, addDays, dayKey, parseDayKey, hm, zonedToMs, localMidnightOf, parseIcsTime, parseRRule, expandEvent, normalizeTimeTree, parseIcs, dayWindow, mergeIntervals, freeSlots, classSpan, komaSlots, SHIFT_DEFAULT, shiftBlocks, shiftLine, shiftText, nextWeekMonday };
 }
