@@ -319,29 +319,19 @@
       }
       addFlow(items);
     }
-    if (navigator.clipboard && navigator.clipboard.readText) {
-      navigator.clipboard.readText().then(useText, function () { manualPaste(useText); });
-    } else {
-      manualPaste(useText);
-    }
+    // TimeTree のページでは、クリップボードの読み取りも、ページ内の入力欄も使えないことがある。
+    // iPhone 標準の入力ダイアログ(prompt)はページの見た目に左右されないので、そこに貼り付けてもらう。
+    askPaste(useText);
   }
-  function manualPaste(useText) {
+  function askPaste(useText) {
+    var t = null;
+    try { t = window.prompt('追加する予定を貼り付けてください\n(入力欄を長押し →「ペースト」→ OK)', ''); } catch (e) { t = null; }
+    if (t && String(t).trim()) { useText(t); return; }
     clear();
-    msg.textContent = '追加する予定を貼り付けてください';
-    sub.textContent = '下の欄を長押しして「ペースト」→「次へ」。';
-    var ta = document.createElement('textarea');
-    // TimeTree のページの見た目の設定で見えなくならないよう、!important ではっきり見せる
-    ta.setAttribute('style', [
-      'display:block !important', 'width:100% !important', 'height:110px !important', 'box-sizing:border-box !important',
-      'font-size:16px !important', 'color:#111 !important', 'background:#fff !important', 'padding:8px !important',
-      'border:2px solid #1f9d55 !important', 'border-radius:10px !important', 'opacity:1 !important', 'visibility:visible !important',
-      '-webkit-user-select:text !important', 'user-select:text !important', 'pointer-events:auto !important'
-    ].join(';'));
-    ta.placeholder = 'ここを長押しして「ペースト」';
-    area.appendChild(ta);
-    btn('次へ', true).onclick = function () { useText(ta.value); };
+    msg.textContent = '貼り付けられませんでした';
+    sub.textContent = '空き時間アプリで「TimeTreeに入れる」を押して予定をコピーしてから、下のボタンを押して、出てきた入力欄に貼り付けてください。';
+    btn('もう一度貼り付ける', true).onclick = function () { askPaste(useText); };
     closeBtn();
-    try { ta.focus(); } catch (e) { /* ignore */ }
   }
 
   // 空き時間アプリの「TimeTreeを開く」で開いたときは、追加する予定がアドレス(#aki-add=…)に入っている
