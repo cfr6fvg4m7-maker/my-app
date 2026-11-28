@@ -1,6 +1,6 @@
 // 空き時間アプリをオフラインでも開けるようにする Service Worker(/aki/ の中だけ)。
 // アプリのファイルを変更したら CACHE の番号を上げる。
-const CACHE = 'aki-v15';
+const CACHE = 'aki-v16';
 const ASSETS = [
   './',
   'index.html',
@@ -11,6 +11,7 @@ const ASSETS = [
   'manifest.webmanifest',
   'bookmarklet.html',
   'timetree.js',
+  'shiftboard.html',
   'icons/apple-touch-icon.png',
   'icons/icon-192.png',
   'icons/icon-512.png',

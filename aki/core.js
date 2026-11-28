@@ -268,6 +268,31 @@ function normalizeClasses(data) {
   return { calendars: [{ id: CLASS_CAL, name: '授業(manaba)', source: 'manaba' }], events };
 }
 
+// iPhoneのショートカットでコピーしたシフトボードのシフト(1行に「開始|終了|タイトル」)→ 予定の配列
+// 日時は「2026/12/02 19:30」「2026-12-02 19:30」「2026年12月2日 19:30」のどれでもよい
+const SB_CAL = 'sb:shifts';
+const DT_RE = /(\d{4})\s*[/\-.年]\s*(\d{1,2})\s*[/\-.月]\s*(\d{1,2})\s*日?\s*(?:\([^)]*\)\s*)?(?:(午前|午後)\s*)?(\d{1,2})\s*[:時]\s*(\d{2})?/g;
+function isShiftboardText(text) { return /^\s*シフトボード/.test(String(text)); }
+function parseShiftboardText(text) {
+  const events = [];
+  for (const line of String(text).split(/\r?\n/)) {
+    const dts = [...line.matchAll(DT_RE)];
+    if (dts.length < 2) continue;
+    const toMs = (m) => {
+      let h = Number(m[5]);
+      if (m[4] === '午後' && h < 12) h += 12;
+      if (m[4] === '午前' && h === 12) h = 0;
+      return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), h, Number(m[6] || 0)).getTime();
+    };
+    const s = toMs(dts[0]);
+    let e = toMs(dts[1]);
+    if (e <= s) e += DAY; // 日付をまたぐシフト
+    const title = (line.split('|').slice(2).join('|').trim()) || 'シフト';
+    events.push({ id: `sb:${s}-${e}`, cal: SB_CAL, title, allDay: false, s, e });
+  }
+  return { calendars: [{ id: SB_CAL, name: 'シフト(シフトボード)', source: 'シフトボード' }], events };
+}
+
 // ICS ファイルの中身 → { calendars, events }(ファイル1つ = カレンダー1つ)
 function parseIcs(text, calId, fallbackName) {
   const lines = String(text).replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '').split('\n');
@@ -449,5 +474,5 @@ function nextWeekMonday(t) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { CLASS_CAL, normalizeClasses, DAY, MIN, startOfDay, addDays, dayKey, parseDayKey, hm, zonedToMs, localMidnightOf, parseIcsTime, parseRRule, expandEvent, normalizeTimeTree, parseIcs, dayWindow, mergeIntervals, freeSlots, classSpan, komaSlots, SHIFT_DEFAULT, shiftBlocks, shiftLine, shiftText, nextWeekMonday };
+  module.exports = { SB_CAL, isShiftboardText, parseShiftboardText, CLASS_CAL, normalizeClasses, DAY, MIN, startOfDay, addDays, dayKey, parseDayKey, hm, zonedToMs, localMidnightOf, parseIcsTime, parseRRule, expandEvent, normalizeTimeTree, parseIcs, dayWindow, mergeIntervals, freeSlots, classSpan, komaSlots, SHIFT_DEFAULT, shiftBlocks, shiftLine, shiftText, nextWeekMonday };
 }
