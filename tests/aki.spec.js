@@ -682,3 +682,20 @@ test('シフトボード: ショートカットでコピーしたシフトを取
   const st = await page.evaluate(() => JSON.parse(localStorage.getItem('akiJikan')));
   expect(st.events.filter((e) => e.cal === 'sb:shifts').map((e) => e.title)).toEqual(['居酒屋']);
 });
+
+test('カレンダーの切り替え: 上のボタンを押すと、そのカレンダーの予定を数えない/もう一度押すと戻る', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const { json } = await runBookmarklet(page);
+  await openApp(page);
+  await importJson(page, json);
+  const fam = page.locator('#cal-chips .cal-chip', { hasText: '家族' });
+  await expect(fam).toHaveClass(/on/);
+  await page.click('.seg [data-view="list"]');
+  const sat = page.locator('#panel-list .dlist li', { hasText: '11/28(土)' });
+  await expect(sat).toContainText('20:00 〜 23:00');
+  await fam.click();
+  await expect(fam).not.toHaveClass(/on/);
+  await expect(sat).toContainText('9:00 〜 23:00');
+  await fam.click();
+  await expect(sat).toContainText('20:00 〜 23:00');
+});

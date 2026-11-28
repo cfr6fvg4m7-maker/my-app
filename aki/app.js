@@ -153,6 +153,7 @@ function render() {
   if (!has) return;
   fixPendingCalendar();
   renderSummary();
+  renderCalChips();
   for (const b of document.querySelectorAll('.seg button')) b.classList.toggle('on', b.dataset.view === state.ui.view);
   for (const v of ['week', 'month', 'list', 'add', 'shift']) $(`#panel-${v}`).hidden = state.ui.view !== v;
   if (state.ui.view === 'week') renderWeek();
@@ -187,6 +188,15 @@ function renderSummary() {
     </button>
     ${new Date(t).getDay() === 3 ? `<button type="button" class="shift-day" data-view="shift" data-shift-reset="1">📝 今日はシフトの提出日です。来週のシフト希望の文章を作る ›</button>` : ''}
     ${stale ? `<button type="button" class="stale" data-open="import">最後の取り込みから${Math.floor((t - state.importedAt) / DAY)}日たちました。取り込み直す ›</button>` : ''}`;
+}
+
+// ---- 表示するカレンダーの切り替え(押すたびにオン/オフ) ----
+function renderCalChips() {
+  const el = $('#cal-chips');
+  el.innerHTML = state.calendars.map((c) => {
+    const on = c.use !== false;
+    return `<button type="button" class="cal-chip${on ? ' on' : ''}" data-calchip="${esc(c.id)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(c.name)}</button>`;
+  }).join('');
 }
 
 // ---- 週(今日から7日) ----
@@ -686,6 +696,11 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.unpend) {
     state.events = state.events.filter((x) => x.id !== t.dataset.unpend);
     save(); closeSheet(); render(); toast('やめました');
+    return;
+  }
+  if (t.dataset.calchip) {
+    const c = state.calendars.find((x) => x.id === t.dataset.calchip);
+    if (c) { c.use = c.use === false; save(); render(); }
     return;
   }
   if (t.dataset.ev) { openEvent(t.dataset.ev, t.dataset.s); return; }
